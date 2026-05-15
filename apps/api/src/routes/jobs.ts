@@ -2,7 +2,7 @@ import { FastifyInstance } from "fastify";
 import { nanoid } from "nanoid";
 import { createDb, jobs, urlResults } from "@bulk/db";
 import { eq, desc, count } from "drizzle-orm";
-import { crawlQueue } from "../queue";
+import { crawlQueue, auditQueue } from "../queue";
 
 export async function jobRoutes(app: FastifyInstance) {
   const db = createDb(process.env.DATABASE_URL!);
@@ -93,6 +93,29 @@ export async function jobRoutes(app: FastifyInstance) {
       .send(header + rows);
   });
 
+  app.post<{ Params: { id: string } }>("/jobs/:id/abort", async (req, reply) => {
+    const [job] = await db.select().from(jobs).where(eq(jobs.id, req.params.id));
+    if (!job) return reply.status(404).send({ error: "Not found" });
+    if (job.status === "done" || job.status === "failed" || job.status === "cancelled") {
+      return reply.status(400).send({ error: "Job is already finished" });
+    }
+
+    await db
+      .update(jobs)
+      .set({ status: "cancelled", finishedAt: new Date() })
+      .where(eq(jobs.id, req.params.id));
+
+    // Drain pending audit jobs for this job from the queue
+    const waiting = await auditQueue.getJobs(["waiting", "delayed"]);
+    await Promise.all(
+      waiting
+        .filter((j) => j.data?.jobId === req.params.id)
+        .map((j) => j.remove())
+    );
+
+    return reply.send({ ok: true });
+  });
+
   app.get<{ Params: { id: string } }>("/jobs/:id/stream", async (req, reply) => {
     const [job] = await db.select().from(jobs).where(eq(jobs.id, req.params.id));
     if (!job) return reply.status(404).send({ error: "Not found" });
@@ -116,7 +139,7 @@ export async function jobRoutes(app: FastifyInstance) {
         return;
       }
       send(current);
-      if (current.status === "done" || current.status === "failed") {
+      if (current.status === "done" || current.status === "failed" || current.status === "cancelled") {
         clearInterval(interval);
         reply.raw.end();
       }

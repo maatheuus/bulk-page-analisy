@@ -82,7 +82,15 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
   const [sort, setSort] = useState<SortKey>("perfScore");
   const [order, setOrder] = useState<"asc" | "desc">("asc");
   const [loading, setLoading] = useState(true);
+  const [aborting, setAborting] = useState(false);
   const sseRef = useRef<EventSource | null>(null);
+
+  async function handleAbort() {
+    if (!confirm("Abort this scan?")) return;
+    setAborting(true);
+    await fetch(`${API}/jobs/${id}/abort`, { method: "POST" });
+    setAborting(false);
+  }
 
   // Fetch job + results
   async function fetchResults(p = page) {
@@ -157,7 +165,7 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
   }
 
   const percentage = pct(job);
-  const isActive = job.status !== "done" && job.status !== "failed";
+  const isActive = job.status !== "done" && job.status !== "failed" && job.status !== "cancelled";
   const pageCount = Math.max(1, Math.ceil(total / 50));
 
   // Compute averages from loaded results
@@ -247,7 +255,29 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
             {job.status.toUpperCase()}
           </span>
         </div>
-        {job.status === "done" && (
+        {job.status !== "cancelled" && (
+          <button
+            onClick={handleAbort}
+            disabled={aborting}
+            style={{
+              background: "transparent",
+              border: "1px solid var(--red)",
+              color: "var(--red)",
+              padding: "6px 14px",
+              fontFamily: "Share Tech Mono, monospace",
+              fontSize: "0.7rem",
+              letterSpacing: "0.1em",
+              cursor: aborting ? "not-allowed" : "pointer",
+              opacity: aborting ? 0.5 : 1,
+              transition: "background 0.15s",
+            }}
+            onMouseEnter={(e) => { if (!aborting) (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,59,59,0.1)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+          >
+            {aborting ? "ABORTING..." : "■ ABORT"}
+          </button>
+        )}
+        {(job.status === "done" || job.status === "cancelled") && (
           <a
             href={`${API}/jobs/${id}/export`}
             style={{

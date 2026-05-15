@@ -4,8 +4,12 @@ import { eq, sql } from "drizzle-orm";
 import puppeteer from "puppeteer";
 import { redisConnection } from "./queue";
 
+const CHROME_EXECUTABLE =
+  process.env.PUPPETEER_EXECUTABLE_PATH ??
+  "/home/pptruser/.cache/puppeteer/chrome/linux-127.0.6533.88/chrome-linux64/chrome";
+
 const CHROME_FLAGS = [
-  "--headless=new",
+  "--headless=old",
   "--no-sandbox",
   "--disable-setuid-sandbox",
   "--disable-dev-shm-usage",
@@ -15,8 +19,12 @@ const CHROME_FLAGS = [
 async function runLighthouse(url: string) {
   const { default: lighthouse } = await import("lighthouse");
 
+  // headless: false prevents Puppeteer from adding --headless=new;
+  // --headless=old in args forces the old headless mode which captures CPU trace
+  // events correctly — new headless silently drops them causing LanternError
   const browser = await puppeteer.launch({
-    headless: true,
+    headless: false,
+    executablePath: CHROME_EXECUTABLE,
     args: CHROME_FLAGS,
   });
 

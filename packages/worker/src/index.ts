@@ -1,6 +1,15 @@
 import { startCrawlWorker } from "./crawl";
 import { startAuditWorker } from "./audit";
 
+// Lighthouse has a bug where a failed trace computation leaves a dangling
+// performance.mark, causing an uncaught DOMException that crashes the process.
+// Catch it here so one bad audit doesn't take down the whole worker.
+process.on("uncaughtException", (err) => {
+  if (err instanceof DOMException) return;
+  console.error("[worker] uncaughtException:", err);
+  process.exit(1);
+});
+
 const databaseUrl = process.env.DATABASE_URL ?? "postgres://bulk:bulk@localhost:5432/bulk_analyzer";
 
 const crawlWorker = startCrawlWorker(databaseUrl);
