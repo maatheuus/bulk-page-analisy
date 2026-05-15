@@ -29,6 +29,15 @@ export const urlResults = pgTable("url_results", {
   analyzedAt: timestamp("analyzed_at"),
 });
 
+export const logs = pgTable("logs", {
+  id: text("id").primaryKey(),
+  jobId: text("job_id"),
+  level: text("level").notNull().default("info"),
+  message: text("message").notNull(),
+  details: text("details"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export type Job = typeof jobs.$inferSelect;
 export type NewJob = typeof jobs.$inferInsert;
 export type UrlResult = typeof urlResults.$inferSelect;

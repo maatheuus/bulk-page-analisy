@@ -96,7 +96,12 @@ export function startCrawlWorker(databaseUrl: string) {
       const auditJobs = unique.map((url, idx) => ({
         name: "audit",
         data: { jobId, url, resultId: rows[idx].id },
-        opts: { attempts: 3, backoff: { type: "exponential", delay: 3000 } },
+        opts: {
+          attempts: 3,
+          backoff: { type: "exponential", delay: 5000 },
+          removeOnComplete: true,
+          removeOnFail: false,
+        },
       }));
 
       for (let i = 0; i < auditJobs.length; i += 100) {

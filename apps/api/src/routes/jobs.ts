@@ -1,8 +1,8 @@
 import { FastifyInstance } from "fastify";
 import { nanoid } from "nanoid";
-import { createDb, jobs, urlResults } from "@bulk/db";
-import { eq, desc, count } from "drizzle-orm";
-import { crawlQueue } from "../queue";
+import { createDb, jobs, urlResults, logs } from "@bulk/db";
+import { eq, desc, count, and, sql } from "drizzle-orm";
+import { crawlQueue, auditQueue } from "../queue";
 
 export async function jobRoutes(app: FastifyInstance) {
   const db = createDb(process.env.DATABASE_URL!);
@@ -34,6 +34,15 @@ export async function jobRoutes(app: FastifyInstance) {
       .from(jobs)
       .orderBy(desc(jobs.createdAt))
       .limit(50);
+    return reply.send(list);
+  });
+
+  app.get("/logs", async (_req, reply) => {
+    const list = await db
+      .select()
+      .from(logs)
+      .orderBy(desc(logs.createdAt))
+      .limit(100);
     return reply.send(list);
   });
 
@@ -92,6 +101,50 @@ export async function jobRoutes(app: FastifyInstance) {
       .header("Content-Disposition", `attachment; filename="job-${req.params.id}.csv"`)
       .send(header + rows);
   });
+
+  app.get<{ Params: { id: string } }>("/jobs/:id/logs", async (req, reply) => {
+    const list = await db
+      .select()
+      .from(logs)
+      .where(eq(logs.jobId, req.params.id))
+      .orderBy(desc(logs.createdAt))
+      .limit(100);
+    return reply.send(list);
+  });
+
+  app.post<{ Params: { id: string; resultId: string } }>(
+    "/jobs/:id/results/:resultId/retry",
+    async (req, reply) => {
+      const { id, resultId } = req.params;
+
+      const [result] = await db
+        .select()
+        .from(urlResults)
+        .where(and(eq(urlResults.id, resultId), eq(urlResults.jobId, id)));
+
+      if (!result) return reply.status(404).send({ error: "Result not found" });
+
+      if (result.status === "done") {
+        return reply.status(400).send({ error: "Already done" });
+      }
+
+      if (result.status === "error") {
+        await db
+          .update(jobs)
+          .set({ failedUrls: sql`${jobs.failedUrls} - 1` })
+          .where(eq(jobs.id, id));
+      }
+
+      await db
+        .update(urlResults)
+        .set({ status: "queued", error: null })
+        .where(eq(urlResults.id, resultId));
+
+      await auditQueue.add("audit", { jobId: id, url: result.url, resultId });
+
+      return reply.send({ ok: true });
+    }
+  );
 
   app.get<{ Params: { id: string } }>("/jobs/:id/stream", async (req, reply) => {
     const [job] = await db.select().from(jobs).where(eq(jobs.id, req.params.id));
