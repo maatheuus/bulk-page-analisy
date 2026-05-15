@@ -1,0 +1,7 @@
+node_modules
+.next
+dist
+.yarn/cache
+.yarn/install-state.gz
+*.env
+.DS_Store
