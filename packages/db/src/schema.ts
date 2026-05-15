@@ -4,6 +4,7 @@ export const jobs = pgTable("jobs", {
   id: text("id").primaryKey(),
   siteUrl: text("site_url").notNull(),
   status: text("status").notNull().default("pending"),
+  formFactor: text("form_factor").notNull().default("desktop"),
   totalUrls: integer("total_urls").default(0),
   doneUrls: integer("done_urls").default(0),
   failedUrls: integer("failed_urls").default(0),
@@ -18,6 +19,7 @@ export const urlResults = pgTable("url_results", {
     .references(() => jobs.id, { onDelete: "cascade" }),
   url: text("url").notNull(),
   status: text("status").notNull().default("queued"),
+  formFactor: text("form_factor"),
   lcp: real("lcp"),
   cls: real("cls"),
   inp: real("inp"),
@@ -27,6 +29,7 @@ export const urlResults = pgTable("url_results", {
   a11yScore: integer("a11y_score"),
   error: text("error"),
   analyzedAt: timestamp("analyzed_at"),
+  opportunities: text("opportunities"),
 });
 
 export const logs = pgTable("logs", {

@@ -33,13 +33,24 @@ export function fmtMs(v: number | null): string {
 export function statusColor(s: string): string {
   if (s === "done") return "lime";
   if (s === "failed" || s === "error") return "red";
+  if (s === "cancelled") return "amber";
   return "amber";
 }
 
+function getAuthHeaders(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  const token = localStorage.getItem("auth_token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 export async function fetchWithRetry(url: string, options?: RequestInit, retries = 2): Promise<Response> {
+  const opts: RequestInit = {
+    ...options,
+    headers: { ...getAuthHeaders(), ...(options?.headers ?? {}) },
+  };
   try {
-    const res = await fetch(url, options);
-    if (!res.ok && retries > 0) {
+    const res = await fetch(url, opts);
+    if (!res.ok && retries > 0 && res.status !== 401) {
       return fetchWithRetry(url, options, retries - 1);
     }
     return res;

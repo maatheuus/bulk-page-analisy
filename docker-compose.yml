@@ -47,6 +47,8 @@ services:
       DATABASE_URL: postgres://bulk:bulk@postgres:5432/bulk_analyzer
       REDIS_URL: redis://redis:6379
       PORT: 4000
+      # AUTH_TOKEN: your-secret-token  # Uncomment to enable auth
+      DOMAIN_RATE_LIMIT: "2"
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -61,6 +63,7 @@ services:
       DATABASE_URL: postgres://bulk:bulk@postgres:5432/bulk_analyzer
       REDIS_URL: redis://redis:6379
       AUDIT_CONCURRENCY: "5"
+      DOMAIN_RATE_LIMIT: "2"
     depends_on:
       migrate:
         condition: service_completed_successfully

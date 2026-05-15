@@ -3,18 +3,33 @@
 import { Job } from "@/types";
 import { statusColor } from "@/utils";
 import Link from "next/link";
+import { useState } from "react";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 interface JobHeaderProps {
   job: Job;
+  onCancel?: () => void;
 }
 
-export function JobHeader({ job }: JobHeaderProps) {
-  const isActive = job.status !== "done" && job.status !== "failed";
+export function JobHeader({ job, onCancel }: JobHeaderProps) {
+  const [confirming, setConfirming] = useState(false);
+  const isActive = job.status !== "done" && job.status !== "failed" && job.status !== "cancelled";
+
+  async function handleCancel() {
+    if (!confirming) {
+      setConfirming(true);
+      setTimeout(() => setConfirming(false), 3000);
+      return;
+    }
+    await fetch(`${API}/jobs/${job.id}/cancel`, { method: "POST" });
+    setConfirming(false);
+    onCancel?.();
+  }
 
   return (
-    <div className="border-b border-(--border) bg-[rgba(6,10,8,0.95)] backdrop-blur-[4px] p-4 px-6 flex items-center gap-4 sticky top-0 z-10">
+    <div className="border-b border-(--border) bg-[rgba(6,10,8,0.95)] backdrop-blur-[4px] sticky top-0 z-10">
+      <div className="max-w-screen-xl mx-auto px-6 sm:px-10 py-4 flex items-center gap-4">
       <Link
         href="/"
         className="text-(--text-dim) no-underline text-[0.8rem] tracking-widest flex items-center gap-1.5 hover:text-(--lime) transition-colors"
@@ -50,6 +65,18 @@ export function JobHeader({ job }: JobHeaderProps) {
           {job.status.toUpperCase()}
         </span>
       </div>
+      {isActive && (
+        <button
+          onClick={handleCancel}
+          className={`bg-transparent border font-['Share_Tech_Mono'] text-[0.7rem] tracking-widest cursor-pointer transition-all px-3.5 py-1.5 ${
+            confirming
+              ? "border-(--red) text-(--red) hover:bg-red-950/30"
+              : "border-(--border) text-(--amber) hover:border-(--amber)"
+          }`}
+        >
+          {confirming ? "■ CONFIRM?" : "■ CANCEL"}
+        </button>
+      )}
       {job.status === "done" && (
         <a
           href={`${API}/jobs/${job.id}/export`}
@@ -58,6 +85,7 @@ export function JobHeader({ job }: JobHeaderProps) {
           ↓ EXPORT CSV
         </a>
       )}
+      </div>
     </div>
   );
 }

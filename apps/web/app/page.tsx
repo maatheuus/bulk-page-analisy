@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { AuthGate } from "@/components/AuthGate";
+import { Job } from "@/types";
+import { fetchWithRetry, statusColor } from "@/utils";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Job } from "@/types";
-import { statusColor, fetchWithRetry } from "@/utils";
+import { useEffect, useRef, useState } from "react";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -20,6 +21,8 @@ function pct(job: Job) {
 export default function HomePage() {
   const router = useRouter();
   const [url, setUrl] = useState("");
+  const [formFactor, setFormFactor] = useState<"desktop" | "mobile">("desktop");
+  const [needsAuth, setNeedsAuth] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -43,7 +46,7 @@ export default function HomePage() {
     e.preventDefault();
     if (!url.trim()) return;
 
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    if (!url.startsWith("http://") && !url.startsWith("https://")) {
       setError("URL must start with http:// or https://");
       return;
     }
@@ -54,8 +57,13 @@ export default function HomePage() {
       const res = await fetchWithRetry(`${API}/jobs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ siteUrl: url.trim() }),
+        body: JSON.stringify({ siteUrl: url.trim(), formFactor }),
       });
+      if (res.status === 401) {
+        setNeedsAuth(true);
+        setSubmitting(false);
+        return;
+      }
       if (!res.ok) {
         const data = await res.json();
         setError(data.error ?? "Failed to create job");
@@ -68,6 +76,24 @@ export default function HomePage() {
       setError("Could not connect to API");
       setSubmitting(false);
     }
+  }
+
+  // Group jobs by siteUrl to detect multiple runs of the same site
+  const jobsBySite = jobs.reduce<Record<string, Job[]>>((acc, job) => {
+    if (!acc[job.siteUrl]) acc[job.siteUrl] = [];
+    acc[job.siteUrl].push(job);
+    return acc;
+  }, {});
+
+  if (needsAuth) {
+    return (
+      <AuthGate
+        onAuthenticated={() => {
+          setNeedsAuth(false);
+          setSubmitting(false);
+        }}
+      />
+    );
   }
 
   return (
@@ -84,10 +110,7 @@ export default function HomePage() {
       </div>
 
       {/* Input Form */}
-      <form
-        onSubmit={handleSubmit}
-        className="w-full max-w-[640px] mb-4"
-      >
+      <form onSubmit={handleSubmit} className="w-full max-w-[640px] mb-4">
         <div className="neon-border flex items-center bg-(--bg-panel) pl-4">
           <span className="text-(--lime-dim) text-[0.8rem] mr-2.5 shrink-0">
             TARGET://
@@ -106,17 +129,33 @@ export default function HomePage() {
             className="bg-(--lime) disabled:bg-(--lime-dim) text-[#060a08] border-none px-6 py-3.5 font-['Orbitron'] font-bold text-[0.7rem] tracking-widest cursor-pointer disabled:cursor-not-allowed shrink-0 transition-colors h-full self-stretch flex items-center gap-2"
           >
             {submitting ? "SCANNING..." : "INITIATE SCAN"}
-            {!submitting && (
-              <span className="text-[0.8rem]">▶</span>
-            )}
+            {!submitting && <span className="text-[0.8rem]">▶</span>}
           </button>
         </div>
         {error && (
-          <div className="mt-2 text-(--red) text-[0.78rem] pl-1">
-            ⚠ {error}
-          </div>
+          <div className="mt-2 text-(--red) text-[0.78rem] pl-1">⚠ {error}</div>
         )}
       </form>
+
+      {/* Form Factor Toggle */}
+      <div className="flex items-center gap-1 mb-4 w-full max-w-[640px]">
+        <span className="text-(--text-muted) text-[0.65rem] tracking-widest mr-2">
+          MODE:
+        </span>
+        {(["desktop", "mobile"] as const).map((f) => (
+          <button
+            key={f}
+            onClick={() => setFormFactor(f)}
+            className={`font-['Share_Tech_Mono'] text-[0.7rem] tracking-widest px-3 py-1 border transition-colors cursor-pointer ${
+              formFactor === f
+                ? "border-(--lime) text-(--lime) bg-(--lime-glow)"
+                : "border-(--border) text-(--text-muted) hover:border-(--lime-dim) hover:text-(--text-dim)"
+            }`}
+          >
+            {f === "desktop" ? "⬜ DESKTOP" : "☐ MOBILE"}
+          </button>
+        ))}
+      </div>
 
       <div className="text-(--text-muted) text-[0.72rem] mb-16 tracking-widest">
         Supports sitemap.xml auto-discovery · Up to 5,000 pages per scan
@@ -128,7 +167,12 @@ export default function HomePage() {
           <div className="flex items-center gap-3 mb-4 text-(--text-dim) text-[0.7rem] tracking-widest uppercase">
             <span>Recent Scans</span>
             <div className="flex-1 h-px bg-(--border)" />
-            <Link href="/debug" className="hover:text-(--lime) transition-colors">Debug Logs</Link>
+            <Link
+              href="/debug"
+              className="hover:text-(--lime) transition-colors"
+            >
+              Debug Logs
+            </Link>
           </div>
 
           <div className="flex flex-col gap-0.5">
@@ -146,12 +190,14 @@ export default function HomePage() {
                     className="w-2 h-2 rounded-full shrink-0"
                     style={{
                       background: `var(--${statusColor(job.status)})`,
-                      boxShadow: job.status !== "done" && job.status !== "failed"
-                        ? `0 0 8px var(--${statusColor(job.status)})`
-                        : "none",
-                      animation: job.status === "auditing" || job.status === "crawling"
-                        ? "pulse-dot 1.5s ease-in-out infinite"
-                        : "none",
+                      boxShadow:
+                        job.status !== "done" && job.status !== "failed"
+                          ? `0 0 8px var(--${statusColor(job.status)})`
+                          : "none",
+                      animation:
+                        job.status === "auditing" || job.status === "crawling"
+                          ? "pulse-dot 1.5s ease-in-out infinite"
+                          : "none",
                     }}
                   />
 
@@ -161,10 +207,11 @@ export default function HomePage() {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-6 shrink-0 text-[0.78rem]">
+                  <div className="flex items-center gap-4 shrink-0 text-[0.78rem]">
                     {job.totalUrls > 0 && (
                       <span className="text-(--text-dim)">
-                        {(job.doneUrls + job.failedUrls).toLocaleString()}/{job.totalUrls.toLocaleString()} pages
+                        {(job.doneUrls + job.failedUrls).toLocaleString()}/
+                        {job.totalUrls.toLocaleString()} pages
                       </span>
                     )}
                     <span
@@ -174,6 +221,21 @@ export default function HomePage() {
                       {statusLabel(job.status)}
                       {job.status === "auditing" && ` ${pct(job)}%`}
                     </span>
+                    {job.formFactor === "mobile" && (
+                      <span className="text-(--text-muted) text-[0.6rem] tracking-widest border border-(--border) px-1.5 py-0.5">
+                        MOB
+                      </span>
+                    )}
+                    {(jobsBySite[job.siteUrl]?.length ?? 0) > 1 &&
+                      job.status === "done" && (
+                        <Link
+                          href={`/compare?a=${jobsBySite[job.siteUrl][0].id}&b=${jobsBySite[job.siteUrl][1].id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-(--lime-dim) hover:text-(--lime) text-[0.65rem] tracking-widest transition-colors no-underline border border-(--border) hover:border-(--lime-dim) px-2 py-0.5"
+                        >
+                          ↔ COMPARE
+                        </Link>
+                      )}
                   </div>
 
                   <span className="text-(--text-muted) text-[0.7rem]">→</span>

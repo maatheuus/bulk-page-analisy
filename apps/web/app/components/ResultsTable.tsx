@@ -8,6 +8,7 @@ interface ResultsTableProps {
   order: "asc" | "desc";
   onSort: (key: SortKey) => void;
   onRetry: (resultId: string) => void;
+  onRowClick: (resultId: string) => void;
 }
 
 export function ResultsTable({
@@ -16,6 +17,7 @@ export function ResultsTable({
   order,
   onSort,
   onRetry,
+  onRowClick,
 }: ResultsTableProps) {
   function scoreClass(v: number | null, type: "perf" | "ms" | "cls"): string {
     if (v === null) return "";
@@ -129,7 +131,8 @@ export function ResultsTable({
           {results.map((r) => (
             <tr
               key={r.id}
-              className={`${r.status === "error" ? "text-(--text-dim)" : ""} hover:bg-(--bg-hover) border-b border-(--border)`}
+              onClick={() => onRowClick(r.id)}
+              className={`${r.status === "error" ? "text-(--text-dim)" : ""} hover:bg-(--bg-hover) border-b border-(--border) cursor-pointer`}
             >
               <td
                 className="p-1.5 px-3 max-w-[320px] overflow-hidden text-ellipsis whitespace-nowrap"
@@ -185,13 +188,14 @@ export function ResultsTable({
               >
                 {r.a11yScore ?? "—"}
               </td>
-              <td className="p-1.5 px-3 text-center flex items-center justify-center gap-2">
+              <td className="p-1.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-center gap-2">
                 <a
                   href={getPsiLink(r.url)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  title="View on PageSpeed Insights"
-                  className="text-(--text-dim) hover:text-(--lime) transition-colors"
+                  title="Open in PageSpeed Insights"
+                  className="text-(--lime-dim) hover:text-(--lime) transition-colors"
                 >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
@@ -213,7 +217,7 @@ export function ResultsTable({
                   <button
                     onClick={() => onRetry(r.id)}
                     title="Retry analysis"
-                    className="text-(--text-dim) hover:text-(--amber) transition-colors cursor-pointer"
+                    className="text-(--amber) hover:text-(--lime) transition-colors cursor-pointer"
                   >
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
@@ -231,6 +235,7 @@ export function ResultsTable({
                     </svg>
                   </button>
                 )}
+                </div>
               </td>
             </tr>
           ))}

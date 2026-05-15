@@ -6,7 +6,8 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "docker compose up --build",
+    "dev": "docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build",
+    "prod": "docker compose up --build",
     "dev:api": "yarn workspace @bulk/api dev",
     "dev:web": "yarn workspace @bulk/web dev",
     "dev:worker": "yarn workspace @bulk/worker dev",

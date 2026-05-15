@@ -1,14 +1,14 @@
 import { FastifyInstance } from "fastify";
 import { nanoid } from "nanoid";
 import { createDb, jobs, urlResults, logs } from "@bulk/db";
-import { eq, desc, count, and, sql } from "drizzle-orm";
+import { eq, desc, count, and, sql, avg, like } from "drizzle-orm";
 import { crawlQueue, auditQueue } from "../queue";
 
 export async function jobRoutes(app: FastifyInstance) {
   const db = createDb(process.env.DATABASE_URL!);
 
   app.post("/jobs", async (req, reply) => {
-    const { siteUrl } = req.body as { siteUrl: string };
+    const { siteUrl, formFactor } = req.body as { siteUrl: string; formFactor?: string };
 
     if (!siteUrl) {
       return reply.status(400).send({ error: "siteUrl is required" });
@@ -21,20 +21,51 @@ export async function jobRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: "Invalid URL" });
     }
 
+    const factor = formFactor === "mobile" ? "mobile" : "desktop";
     const id = nanoid();
-    await db.insert(jobs).values({ id, siteUrl: url.origin, status: "pending" });
-    await crawlQueue.add("crawl", { jobId: id, siteUrl: url.origin });
+    await db.insert(jobs).values({ id, siteUrl: url.origin, status: "pending", formFactor: factor });
+    await crawlQueue.add("crawl", { jobId: id, siteUrl: url.origin, formFactor: factor });
 
     return reply.status(201).send({ id, siteUrl: url.origin, status: "pending" });
   });
 
-  app.get("/jobs", async (_req, reply) => {
+  app.get<{ Querystring: { site?: string } }>("/jobs", async (req, reply) => {
+    const { site } = req.query;
     const list = await db
       .select()
       .from(jobs)
+      .where(site ? like(jobs.siteUrl, `%${site}%`) : undefined)
       .orderBy(desc(jobs.createdAt))
       .limit(50);
     return reply.send(list);
+  });
+
+  app.get<{ Querystring: { a: string; b: string } }>("/jobs/compare", async (req, reply) => {
+    const { a, b } = req.query;
+    if (!a || !b) return reply.status(400).send({ error: "Params a and b required" });
+
+    async function getJobStats(jobId: string) {
+      const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId));
+      if (!job) return null;
+      const [stats] = await db
+        .select({
+          avgLcp: avg(urlResults.lcp),
+          avgCls: avg(urlResults.cls),
+          avgInp: avg(urlResults.inp),
+          avgTtfb: avg(urlResults.ttfb),
+          avgPerf: avg(urlResults.perfScore),
+          avgSeo: avg(urlResults.seoScore),
+          avgA11y: avg(urlResults.a11yScore),
+        })
+        .from(urlResults)
+        .where(and(eq(urlResults.jobId, jobId), eq(urlResults.status, "done")));
+      return { job, stats };
+    }
+
+    const [dataA, dataB] = await Promise.all([getJobStats(a), getJobStats(b)]);
+    if (!dataA || !dataB) return reply.status(404).send({ error: "One or both jobs not found" });
+
+    return reply.send({ a: dataA, b: dataB });
   });
 
   app.get("/logs", async (_req, reply) => {
@@ -110,6 +141,43 @@ export async function jobRoutes(app: FastifyInstance) {
       .orderBy(desc(logs.createdAt))
       .limit(100);
     return reply.send(list);
+  });
+
+  app.get<{ Params: { id: string; resultId: string } }>(
+    "/jobs/:id/results/:resultId",
+    async (req, reply) => {
+      const { id, resultId } = req.params;
+      const [result] = await db
+        .select()
+        .from(urlResults)
+        .where(and(eq(urlResults.id, resultId), eq(urlResults.jobId, id)));
+      if (!result) return reply.status(404).send({ error: "Not found" });
+      return reply.send(result);
+    }
+  );
+
+  app.post<{ Params: { id: string } }>("/jobs/:id/cancel", async (req, reply) => {
+    const { id } = req.params;
+
+    const [job] = await db.select().from(jobs).where(eq(jobs.id, id));
+    if (!job) return reply.status(404).send({ error: "Not found" });
+
+    const activeStatuses = ["pending", "crawling", "auditing"];
+    if (!activeStatuses.includes(job.status)) {
+      return reply.status(400).send({ error: "Job is not active" });
+    }
+
+    await db
+      .update(jobs)
+      .set({ status: "cancelled", finishedAt: new Date() })
+      .where(eq(jobs.id, id));
+
+    await db
+      .update(urlResults)
+      .set({ status: "error", error: "Cancelled" })
+      .where(and(eq(urlResults.jobId, id), sql`${urlResults.status} IN ('queued', 'running')`));
+
+    return reply.send({ ok: true });
   });
 
   app.post<{ Params: { id: string; resultId: string } }>(

@@ -1,0 +1,16 @@
+FROM node:20-alpine
+WORKDIR /app
+
+COPY package.json .yarnrc.yml yarn.lock ./
+COPY apps/api/package.json ./apps/api/
+COPY packages/db/package.json ./packages/db/
+COPY packages/types/package.json ./packages/types/
+
+RUN corepack enable && yarn install
+
+COPY packages/db ./packages/db
+COPY packages/types ./packages/types
+COPY apps/api ./apps/api
+
+EXPOSE 4000
+CMD ["yarn", "workspace", "@bulk/api", "dev"]

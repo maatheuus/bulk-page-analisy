@@ -78,7 +78,7 @@ export function startCrawlWorker(databaseUrl: string) {
   return new Worker(
     "crawl",
     async (job) => {
-      const { jobId, siteUrl } = job.data as { jobId: string; siteUrl: string };
+      const { jobId, siteUrl, formFactor = "desktop" } = job.data as { jobId: string; siteUrl: string; formFactor?: string };
 
       await db.update(jobs).set({ status: "crawling" }).where(eq(jobs.id, jobId));
 
@@ -95,7 +95,7 @@ export function startCrawlWorker(databaseUrl: string) {
 
       const auditJobs = unique.map((url, idx) => ({
         name: "audit",
-        data: { jobId, url, resultId: rows[idx].id },
+        data: { jobId, url, resultId: rows[idx].id, formFactor },
         opts: {
           attempts: 3,
           backoff: { type: "exponential", delay: 5000 },
