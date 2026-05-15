@@ -1,7 +1,8 @@
 import { Worker } from "bullmq";
-import { createDb, jobs, urlResults } from "@bulk/db";
+import { createDb, jobs, urlResults, logs } from "@bulk/db";
 import { eq, sql } from "drizzle-orm";
 import puppeteer from "puppeteer";
+import { nanoid } from "nanoid";
 import { redisConnection } from "./queue";
 
 const CHROME_FLAGS = [
@@ -70,11 +71,18 @@ export function startAuditWorker(databaseUrl: string) {
         .where(eq(urlResults.id, resultId));
 
       try {
+        await db.insert(logs).values({
+          id: nanoid(),
+          jobId,
+          level: "info",
+          message: `Starting Lighthouse audit for ${url}`,
+        });
+
         const metrics = await runLighthouse(url);
 
         await db
           .update(urlResults)
-          .set({ ...metrics, status: "done", analyzedAt: new Date() })
+          .set({ ...metrics, status: "done", analyzedAt: new Date(), error: null })
           .where(eq(urlResults.id, resultId));
 
         await db
@@ -83,6 +91,14 @@ export function startAuditWorker(databaseUrl: string) {
           .where(eq(jobs.id, jobId));
       } catch (err) {
         const error = err instanceof Error ? err.message : String(err);
+
+        await db.insert(logs).values({
+          id: nanoid(),
+          jobId,
+          level: "error",
+          message: `Lighthouse audit failed for ${url}`,
+          details: error,
+        });
 
         await db
           .update(urlResults)

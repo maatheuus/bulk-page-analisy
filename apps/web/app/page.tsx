@@ -3,24 +3,10 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Job } from "@/types";
+import { statusColor, fetchWithRetry } from "@/utils";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
-
-type Job = {
-  id: string;
-  siteUrl: string;
-  status: string;
-  totalUrls: number;
-  doneUrls: number;
-  failedUrls: number;
-  createdAt: string;
-};
-
-function statusColor(s: string) {
-  if (s === "done") return "var(--lime)";
-  if (s === "failed") return "var(--red)";
-  return "var(--amber)";
-}
 
 function statusLabel(s: string) {
   return s.toUpperCase();
@@ -48,7 +34,7 @@ export default function HomePage() {
 
   async function fetchJobs() {
     try {
-      const res = await fetch(`${API}/jobs`);
+      const res = await fetchWithRetry(`${API}/jobs`);
       if (res.ok) setJobs(await res.json());
     } catch {}
   }
@@ -56,10 +42,16 @@ export default function HomePage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!url.trim()) return;
+
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      setError("URL must start with http:// or https://");
+      return;
+    }
+
     setSubmitting(true);
     setError("");
     try {
-      const res = await fetch(`${API}/jobs`, {
+      const res = await fetchWithRetry(`${API}/jobs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ siteUrl: url.trim() }),
@@ -79,63 +71,25 @@ export default function HomePage() {
   }
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        padding: "60px 24px 80px",
-        position: "relative",
-        zIndex: 1,
-      }}
-    >
+    <main className="min-h-screen flex flex-col items-center p-15 px-6 pb-20 relative z-[1]">
       {/* Logo / Header */}
-      <div style={{ textAlign: "center", marginBottom: 56 }}>
-        <div
-          style={{
-            fontFamily: "Orbitron, monospace",
-            fontSize: "clamp(2rem, 6vw, 3.5rem)",
-            fontWeight: 900,
-            color: "var(--lime)",
-            letterSpacing: "0.12em",
-            textShadow: "0 0 30px rgba(57,255,90,0.5), 0 0 60px rgba(57,255,90,0.2)",
-            lineHeight: 1,
-          }}
-        >
+      <div className="text-center mb-14">
+        <div className="font-['Orbitron'] text-[clamp(2rem,6vw,3.5rem)] font-black text-[var(--lime)] tracking-widest leading-none shadow-[0_0_30px_rgba(57,255,90,0.5),0_0_60px_rgba(57,255,90,0.2)]">
           BULK ANALYZER
         </div>
-        <div
-          style={{
-            marginTop: 10,
-            color: "var(--text-dim)",
-            fontSize: "0.75rem",
-            letterSpacing: "0.25em",
-            textTransform: "uppercase",
-          }}
-        >
+        <div className="mt-2.5 text-[var(--text-dim)] text-[0.75rem] tracking-[0.25em] uppercase">
           Web Performance Intelligence System
-          <span className="blink" style={{ marginLeft: 6 }}>
-            ▮
-          </span>
+          <span className="blink ml-1.5">▮</span>
         </div>
       </div>
 
       {/* Input Form */}
       <form
         onSubmit={handleSubmit}
-        style={{ width: "100%", maxWidth: 640, marginBottom: 16 }}
+        className="w-full max-w-[640px] mb-4"
       >
-        <div
-          className="neon-border"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            background: "var(--bg-panel)",
-            padding: "0 0 0 16px",
-          }}
-        >
-          <span style={{ color: "var(--lime-dim)", fontSize: "0.8rem", marginRight: 10, flexShrink: 0 }}>
+        <div className="neon-border flex items-center bg-[var(--bg-panel)] pl-4">
+          <span className="text-[var(--lime-dim)] text-[0.8rem] mr-2.5 shrink-0">
             TARGET://
           </span>
           <input
@@ -144,130 +98,56 @@ export default function HomePage() {
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://example.com"
-            style={{
-              flex: 1,
-              background: "transparent",
-              border: "none",
-              outline: "none",
-              color: "var(--text)",
-              fontFamily: "Share Tech Mono, monospace",
-              fontSize: "0.95rem",
-              padding: "14px 0",
-              caretColor: "var(--lime)",
-            }}
+            className="flex-1 bg-transparent border-none outline-none text-[var(--text)] font-['Share_Tech_Mono'] text-[0.95rem] py-3.5 caret-[var(--lime)]"
           />
           <button
             type="submit"
             disabled={submitting || !url.trim()}
-            style={{
-              background: submitting ? "var(--lime-dim)" : "var(--lime)",
-              color: "#060a08",
-              border: "none",
-              padding: "14px 24px",
-              fontFamily: "Orbitron, monospace",
-              fontWeight: 700,
-              fontSize: "0.7rem",
-              letterSpacing: "0.1em",
-              cursor: submitting ? "not-allowed" : "pointer",
-              flexShrink: 0,
-              transition: "background 0.2s",
-              height: "100%",
-              alignSelf: "stretch",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-            }}
+            className="bg-[var(--lime)] disabled:bg-[var(--lime-dim)] text-[#060a08] border-none px-6 py-3.5 font-['Orbitron'] font-bold text-[0.7rem] tracking-widest cursor-pointer disabled:cursor-not-allowed shrink-0 transition-colors h-full self-stretch flex items-center gap-2"
           >
             {submitting ? "SCANNING..." : "INITIATE SCAN"}
             {!submitting && (
-              <span style={{ fontSize: "0.8rem" }}>▶</span>
+              <span className="text-[0.8rem]">▶</span>
             )}
           </button>
         </div>
         {error && (
-          <div
-            style={{
-              marginTop: 8,
-              color: "var(--red)",
-              fontSize: "0.78rem",
-              paddingLeft: 4,
-            }}
-          >
+          <div className="mt-2 text-[var(--red)] text-[0.78rem] pl-1">
             ⚠ {error}
           </div>
         )}
       </form>
 
-      <div
-        style={{
-          color: "var(--text-muted)",
-          fontSize: "0.72rem",
-          marginBottom: 64,
-          letterSpacing: "0.1em",
-        }}
-      >
+      <div className="text-[var(--text-muted)] text-[0.72rem] mb-16 tracking-widest">
         Supports sitemap.xml auto-discovery · Up to 5,000 pages per scan
       </div>
 
       {/* Recent Jobs */}
       {jobs.length > 0 && (
-        <div style={{ width: "100%", maxWidth: 800 }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              marginBottom: 16,
-              color: "var(--text-dim)",
-              fontSize: "0.7rem",
-              letterSpacing: "0.2em",
-              textTransform: "uppercase",
-            }}
-          >
+        <div className="w-full max-w-[800px]">
+          <div className="flex items-center gap-3 mb-4 text-[var(--text-dim)] text-[0.7rem] tracking-widest uppercase">
             <span>Recent Scans</span>
-            <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+            <div className="flex-1 h-px bg-[var(--border)]" />
+            <Link href="/debug" className="hover:text-[var(--lime)] transition-colors">Debug Logs</Link>
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <div className="flex flex-col gap-0.5">
             {jobs.map((job, i) => (
               <Link
                 key={job.id}
                 href={`/jobs/${job.id}`}
-                style={{ textDecoration: "none" }}
+                className="no-underline"
               >
                 <div
-                  className="animate-fade-up"
-                  style={{
-                    background: "var(--bg-panel)",
-                    border: "1px solid var(--border)",
-                    padding: "12px 16px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 16,
-                    cursor: "pointer",
-                    transition: "border-color 0.15s, background 0.15s",
-                    animationDelay: `${i * 40}ms`,
-                    opacity: 0,
-                  }}
-                  onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLDivElement).style.borderColor = "var(--lime-dim)";
-                    (e.currentTarget as HTMLDivElement).style.background = "var(--bg-hover)";
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLDivElement).style.borderColor = "var(--border)";
-                    (e.currentTarget as HTMLDivElement).style.background = "var(--bg-panel)";
-                  }}
+                  className="animate-fade-up bg-[var(--bg-panel)] border border-[var(--border)] p-3 px-4 flex items-center gap-4 cursor-pointer transition-all opacity-0 hover:border-[var(--lime-dim)] hover:bg-[var(--bg-hover)]"
+                  style={{ animationDelay: `${i * 40}ms` }}
                 >
-                  {/* Status dot */}
                   <div
+                    className="w-2 h-2 rounded-full shrink-0"
                     style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: "50%",
-                      background: statusColor(job.status),
-                      flexShrink: 0,
+                      background: `var(--${statusColor(job.status)})`,
                       boxShadow: job.status !== "done" && job.status !== "failed"
-                        ? `0 0 8px ${statusColor(job.status)}`
+                        ? `0 0 8px var(--${statusColor(job.status)})`
                         : "none",
                       animation: job.status === "auditing" || job.status === "crawling"
                         ? "pulse-dot 1.5s ease-in-out infinite"
@@ -275,49 +155,28 @@ export default function HomePage() {
                     }}
                   />
 
-                  {/* URL */}
-                  <div style={{ flex: 1, overflow: "hidden" }}>
-                    <div
-                      style={{
-                        fontSize: "0.88rem",
-                        color: "var(--text)",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
+                  <div className="flex-1 overflow-hidden">
+                    <div className="text-[0.88rem] text-[var(--text)] overflow-hidden text-ellipsis whitespace-nowrap">
                       {job.siteUrl}
                     </div>
                   </div>
 
-                  {/* Stats */}
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 24,
-                      flexShrink: 0,
-                      fontSize: "0.78rem",
-                    }}
-                  >
+                  <div className="flex items-center gap-6 shrink-0 text-[0.78rem]">
                     {job.totalUrls > 0 && (
-                      <span style={{ color: "var(--text-dim)" }}>
+                      <span className="text-[var(--text-dim)]">
                         {(job.doneUrls + job.failedUrls).toLocaleString()}/{job.totalUrls.toLocaleString()} pages
                       </span>
                     )}
                     <span
-                      style={{
-                        color: statusColor(job.status),
-                        letterSpacing: "0.1em",
-                        fontSize: "0.68rem",
-                      }}
+                      className="tracking-widest text-[0.68rem]"
+                      style={{ color: `var(--${statusColor(job.status)})` }}
                     >
                       {statusLabel(job.status)}
                       {job.status === "auditing" && ` ${pct(job)}%`}
                     </span>
                   </div>
 
-                  <span style={{ color: "var(--text-muted)", fontSize: "0.7rem" }}>→</span>
+                  <span className="text-[var(--text-muted)] text-[0.7rem]">→</span>
                 </div>
               </Link>
             ))}
