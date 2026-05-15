@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { UrlResult } from "@/types";
-import { scoreClass, fmtMs, fmt } from "@/utils";
+import { scoreClass, fmtMs, fmt, fetchWithRetry } from "@/utils";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -45,6 +45,60 @@ function MetricBar({ value, type }: { value: number | null; type: "ms" | "cls" |
   );
 }
 
+function AiTipsSection({ jobId, resultId }: { jobId: string; resultId: string }) {
+  const [tips, setTips] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function fetchTips() {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetchWithRetry(`${API}/jobs/${jobId}/results/${resultId}/ai-tips`, { method: "POST" });
+      if (!res.ok) throw new Error("Failed");
+      const data = await res.json() as { tips: string };
+      setTips(data.tips);
+    } catch {
+      setError("Failed to generate tips.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (!tips && !loading && !error) {
+    return (
+      <button
+        onClick={fetchTips}
+        className="w-full border border-(--lime-dim) text-(--lime) text-[0.65rem] tracking-[0.15em] py-2 hover:border-(--lime) hover:bg-(--lime-glow) transition-all cursor-pointer font-['Share_Tech_Mono'] mt-4"
+      >
+        ⚡ GET AI TIPS FOR THIS PAGE
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-4 border border-(--border) bg-(--bg-panel) p-4">
+      <div className="text-[0.6rem] text-(--lime-dim) tracking-widest uppercase mb-3 flex items-center justify-between">
+        <span>⚡ AI Tips</span>
+        {tips && (
+          <button onClick={fetchTips} className="text-(--text-muted) hover:text-(--text-dim) cursor-pointer font-['Share_Tech_Mono']">
+            ↻
+          </button>
+        )}
+      </div>
+      {loading && (
+        <div className="text-(--text-dim) text-[0.7rem] tracking-widest">
+          GENERATING<span className="blink">...</span>
+        </div>
+      )}
+      {error && <div className="text-(--red) text-[0.7rem]">{error}</div>}
+      {tips && !loading && (
+        <div className="text-[0.7rem] text-(--text) leading-relaxed whitespace-pre-wrap">{tips}</div>
+      )}
+    </div>
+  );
+}
+
 export function ResultDrawer({ jobId, resultId, onClose }: ResultDrawerProps) {
   const [result, setResult] = useState<(UrlResult & { opportunities?: string }) | null>(null);
   const [loading, setLoading] = useState(false);
@@ -52,10 +106,11 @@ export function ResultDrawer({ jobId, resultId, onClose }: ResultDrawerProps) {
   useEffect(() => {
     if (!resultId) { setResult(null); return; }
     setLoading(true);
-    fetch(`${API}/jobs/${jobId}/results/${resultId}`)
+    fetchWithRetry(`${API}/jobs/${jobId}/results/${resultId}`)
       .then((r) => r.json())
-      .then((d) => { setResult(d); setLoading(false); })
-      .catch(() => setLoading(false));
+      .then((d) => setResult(d))
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, [resultId, jobId]);
 
   const open = !!resultId;
@@ -143,6 +198,10 @@ export function ResultDrawer({ jobId, resultId, onClose }: ResultDrawerProps) {
                     ))}
                   </div>
                 </>
+              )}
+
+              {result.status === "done" && (
+                <AiTipsSection jobId={jobId} resultId={result.id} />
               )}
 
               {result.error && (

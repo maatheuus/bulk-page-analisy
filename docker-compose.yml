@@ -49,6 +49,7 @@ services:
       PORT: 4000
       # AUTH_TOKEN: your-secret-token  # Uncomment to enable auth
       DOMAIN_RATE_LIMIT: "2"
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
     depends_on:
       migrate:
         condition: service_completed_successfully

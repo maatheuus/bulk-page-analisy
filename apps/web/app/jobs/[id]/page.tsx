@@ -1,5 +1,6 @@
 "use client";
 
+import { AiReportPanel } from "@/components/AiReportPanel";
 import { FilterBar } from "@/components/FilterBar";
 import { JobHeader } from "@/components/JobHeader";
 import { ProgressBar } from "@/components/ProgressBar";
@@ -220,6 +221,12 @@ export default function JobPage({
           {results.length > 0 && <StatsOverview results={results} />}
           {results.length > 0 && (
             <WorstPagesPanel results={results} onRowClick={setDrawerResultId} />
+          )}
+
+          {job.status === "done" && (
+            <div className="mt-5 flex justify-end">
+              <AiReportPanel jobId={id} />
+            </div>
           )}
         </div>
 

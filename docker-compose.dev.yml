@@ -3,6 +3,8 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile.dev
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-AIzaSyBbjWZP0fvKClnKUUBenqNb6WerEA_c3t0}
     volumes:
       - ./apps/api/src:/app/apps/api/src
       - ./packages/db/src:/app/packages/db/src

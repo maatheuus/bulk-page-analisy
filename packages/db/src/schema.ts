@@ -32,6 +32,15 @@ export const urlResults = pgTable("url_results", {
   opportunities: text("opportunities"),
 });
 
+export const aiReports = pgTable("ai_reports", {
+  id: text("id").primaryKey(),
+  jobId: text("job_id")
+    .notNull()
+    .references(() => jobs.id, { onDelete: "cascade" }),
+  report: text("report").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const logs = pgTable("logs", {
   id: text("id").primaryKey(),
   jobId: text("job_id"),
