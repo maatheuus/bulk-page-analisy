@@ -3,19 +3,19 @@ import { SortKey, UrlResult, Job } from "./types";
 export function scoreClass(v: number | null, type: "perf" | "ms" | "cls"): string {
   if (v === null) return "";
   if (type === "perf") {
-    if (v >= 90) return "text-[var(--lime)]";
-    if (v >= 50) return "text-[var(--amber)]";
-    return "text-[var(--red)]";
+    if (v >= 90) return "text-(--lime)";
+    if (v >= 50) return "text-(--amber)";
+    return "text-(--red)";
   }
   if (type === "ms") {
-    if (v <= 1500) return "text-[var(--lime)]";
-    if (v <= 3500) return "text-[var(--amber)]";
-    return "text-[var(--red)]";
+    if (v <= 1500) return "text-(--lime)";
+    if (v <= 3500) return "text-(--amber)";
+    return "text-(--red)";
   }
   if (type === "cls") {
-    if (v <= 0.1) return "text-[var(--lime)]";
-    if (v <= 0.25) return "text-[var(--amber)]";
-    return "text-[var(--red)]";
+    if (v <= 0.1) return "text-(--lime)";
+    if (v <= 0.25) return "text-(--amber)";
+    return "text-(--red)";
   }
   return "";
 }

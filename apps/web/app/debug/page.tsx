@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import Link from "next/link";
 import { fetchWithRetry } from "@/utils";
+import Link from "next/link";
+import { useEffect, useState } from "react";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -35,40 +35,71 @@ export default function DebugPage() {
     <main className="min-h-screen p-6 relative z-[1]">
       <div className="max-w-5xl mx-auto">
         <div className="flex items-center gap-4 mb-8">
-          <Link href="/" className="text-[var(--text-dim)] hover:text-[var(--lime)] tracking-widest text-[0.8rem]">← BACK</Link>
-          <h1 className="font-['Orbitron'] text-xl text-[var(--lime)] tracking-widest font-black">SYSTEM_LOGS</h1>
+          <Link
+            href="/"
+            className="text-(--text-dim) hover:text-(--lime) tracking-widest text-[0.8rem]"
+          >
+            ← BACK
+          </Link>
+          <h1 className="font-['Orbitron'] text-xl text-(--lime) tracking-widest font-black">
+            SYSTEM_LOGS
+          </h1>
         </div>
 
-        <div className="bg-[var(--bg-panel)] border border-[var(--border)] overflow-hidden">
+        <div className="bg-(--bg-panel) border border-(--border) overflow-hidden">
           <table className="w-full text-left text-[0.75rem] border-collapse">
             <thead>
-              <tr className="border-b border-[var(--border)] bg-[rgba(255,255,255,0.02)]">
-                <th className="p-3 text-[var(--lime-dim)] uppercase tracking-widest">Timestamp</th>
-                <th className="p-3 text-[var(--lime-dim)] uppercase tracking-widest">Level</th>
-                <th className="p-3 text-[var(--lime-dim)] uppercase tracking-widest">Job ID</th>
-                <th className="p-3 text-[var(--lime-dim)] uppercase tracking-widest">Message</th>
+              <tr className="border-b border-(--border) bg-[rgba(255,255,255,0.02)]">
+                <th className="p-3 text-(--lime-dim) uppercase tracking-widest">
+                  Timestamp
+                </th>
+                <th className="p-3 text-(--lime-dim) uppercase tracking-widest">
+                  Level
+                </th>
+                <th className="p-3 text-(--lime-dim) uppercase tracking-widest">
+                  Job ID
+                </th>
+                <th className="p-3 text-(--lime-dim) uppercase tracking-widest">
+                  Message
+                </th>
               </tr>
             </thead>
             <tbody>
               {logs.map((log) => (
-                <tr key={log.id} className="border-b border-[var(--border)] hover:bg-[var(--bg-hover)]">
-                  <td className="p-3 text-[var(--text-dim)] whitespace-nowrap">
+                <tr
+                  key={log.id}
+                  className="border-b border-(--border) hover:bg-(--bg-hover)"
+                >
+                  <td className="p-3 text-(--text-dim) whitespace-nowrap">
                     {new Date(log.createdAt).toLocaleTimeString()}
                   </td>
                   <td className="p-3 font-bold uppercase tracking-widest">
-                    <span className={log.level === 'error' ? 'text-[var(--red)]' : 'text-[var(--lime-dim)]'}>
+                    <span
+                      className={
+                        log.level === "error"
+                          ? "text-(--red)"
+                          : "text-(--lime-dim)"
+                      }
+                    >
                       {log.level}
                     </span>
                   </td>
-                  <td className="p-3 font-mono text-[var(--text-muted)]">
+                  <td className="p-3 font-mono text-(--text-muted)">
                     {log.jobId ? (
-                      <Link href={`/jobs/${log.jobId}`} className="hover:text-[var(--lime)]">{log.jobId}</Link>
-                    ) : 'SYSTEM'}
+                      <Link
+                        href={`/jobs/${log.jobId}`}
+                        className="hover:text-(--lime)"
+                      >
+                        {log.jobId}
+                      </Link>
+                    ) : (
+                      "SYSTEM"
+                    )}
                   </td>
                   <td className="p-3">
-                    <div className="text-[var(--text)]">{log.message}</div>
+                    <div className="text-(--text)">{log.message}</div>
                     {log.details && (
-                      <pre className="mt-2 p-2 bg-black/30 border border-[var(--border)] text-[0.65rem] text-[var(--text-dim)] overflow-x-auto">
+                      <pre className="mt-2 p-2 bg-black/30 border border-(--border) text-[0.65rem] text-(--text-dim) overflow-x-auto">
                         {log.details}
                       </pre>
                     )}
@@ -77,7 +108,10 @@ export default function DebugPage() {
               ))}
               {logs.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="p-10 text-center text-[var(--text-dim)] tracking-widest">
+                  <td
+                    colSpan={4}
+                    className="p-10 text-center text-(--text-dim) tracking-widest"
+                  >
                     NO_LOGS_FOUND
                   </td>
                 </tr>

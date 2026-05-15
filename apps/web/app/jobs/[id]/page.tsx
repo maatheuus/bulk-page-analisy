@@ -1,17 +1,21 @@
 "use client";
 
-import { useState, useEffect, useRef, use } from "react";
-import { Job, UrlResult, SortKey } from "@/types";
-import { fetchWithRetry } from "@/utils";
+import { FilterBar } from "@/components/FilterBar";
 import { JobHeader } from "@/components/JobHeader";
 import { ProgressBar } from "@/components/ProgressBar";
-import { StatsOverview } from "@/components/StatsOverview";
-import { FilterBar } from "@/components/FilterBar";
 import { ResultsTable } from "@/components/ResultsTable";
+import { StatsOverview } from "@/components/StatsOverview";
+import { Job, SortKey, UrlResult } from "@/types";
+import { fetchWithRetry } from "@/utils";
+import { use, useEffect, useRef, useState } from "react";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
-export default function JobPage({ params }: { params: Promise<{ id: string }> }) {
+export default function JobPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const { id } = use(params);
   const [job, setJob] = useState<Job | null>(null);
   const [results, setResults] = useState<UrlResult[]>([]);
@@ -35,7 +39,10 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
 
   const handleRetry = async (resultId: string) => {
     try {
-      const res = await fetchWithRetry(`${API}/jobs/${id}/results/${resultId}/retry`, { method: "POST" });
+      const res = await fetchWithRetry(
+        `${API}/jobs/${id}/results/${resultId}/retry`,
+        { method: "POST" },
+      );
       if (res.ok) {
         fetchResults(page);
       }
@@ -66,10 +73,14 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
     return () => es.close();
   }, [id]);
 
-  useEffect(() => { fetchResults(page); }, [page]);
+  useEffect(() => {
+    fetchResults(page);
+  }, [page]);
 
   const filteredResults = results.filter((r) => {
-    const matchesQuery = r.url.toLowerCase().includes(filterQuery.toLowerCase());
+    const matchesQuery = r.url
+      .toLowerCase()
+      .includes(filterQuery.toLowerCase());
     const matchesStatus = filterStatus === "all" || r.status === filterStatus;
     return matchesQuery && matchesStatus;
   });
@@ -77,19 +88,27 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
   const sorted = [...filteredResults].sort((a, b) => {
     const av = a[sort] ?? (order === "asc" ? Infinity : -Infinity);
     const bv = b[sort] ?? (order === "asc" ? Infinity : -Infinity);
-    if (typeof av === "string") return order === "asc" ? av.localeCompare(bv as string) : (bv as string).localeCompare(av);
-    return order === "asc" ? (av as number) - (bv as number) : (bv as number) - (av as number);
+    if (typeof av === "string")
+      return order === "asc"
+        ? av.localeCompare(bv as string)
+        : (bv as string).localeCompare(av);
+    return order === "asc"
+      ? (av as number) - (bv as number)
+      : (bv as number) - (av as number);
   });
 
   function toggleSort(key: SortKey) {
     if (sort === key) setOrder((o) => (o === "asc" ? "desc" : "asc"));
-    else { setSort(key); setOrder("asc"); }
+    else {
+      setSort(key);
+      setOrder("asc");
+    }
   }
 
   if (loading) {
     return (
       <main className="min-h-screen flex items-center justify-center relative z-[1]">
-        <div className="text-[var(--lime-dim)] tracking-[0.2em] text-[0.8rem]">
+        <div className="text-(--lime-dim) tracking-[0.2em] text-[0.8rem]">
           LOADING<span className="blink">...</span>
         </div>
       </main>
@@ -99,7 +118,7 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
   if (!job) {
     return (
       <main className="min-h-screen flex items-center justify-center relative z-[1]">
-        <div className="text-[var(--red)]">Job not found</div>
+        <div className="text-(--red)">Job not found</div>
       </main>
     );
   }
@@ -111,19 +130,23 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
     <main className="min-h-screen pb-20 relative z-[1]">
       <JobHeader job={job} />
 
-      <div className="p-6 border-b border-[var(--border)] bg-[var(--bg-panel)]">
+      <div className="p-6 border-b border-(--border) bg-(--bg-panel)">
         <ProgressBar job={job} />
 
-        <div className="flex gap-1 text-[0.72rem] text-[var(--text-dim)] mb-5">
-          <span className="text-[var(--lime)]">{job.doneUrls.toLocaleString()}</span>
+        <div className="flex gap-1 text-[0.72rem] text-(--text-dim) mb-5">
+          <span className="text-(--lime)">
+            {job.doneUrls.toLocaleString()}
+          </span>
           <span>/</span>
           <span>{(job.totalUrls || 0).toLocaleString()} pages analyzed</span>
           {job.failedUrls > 0 && (
-            <span className="ml-3 text-[var(--red)]">
+            <span className="ml-3 text-(--red)">
               {job.failedUrls} failed
             </span>
           )}
-          {isActive && <span className="blink ml-2 text-[var(--lime-dim)]">scanning</span>}
+          {isActive && (
+            <span className="blink ml-2 text-(--lime-dim)">scanning</span>
+          )}
         </div>
 
         {results.length > 0 && <StatsOverview results={results} />}
@@ -136,9 +159,11 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
         />
 
         {results.length === 0 && (
-          <div className="text-[var(--text-dim)] text-[0.8rem] text-center py-10 tracking-widest">
+          <div className="text-(--text-dim) text-[0.8rem] text-center py-10 tracking-widest">
             {isActive ? (
-              <>AWAITING SCAN DATA<span className="blink">...</span></>
+              <>
+                AWAITING SCAN DATA<span className="blink">...</span>
+              </>
             ) : (
               "NO RESULTS"
             )}
@@ -161,17 +186,17 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
                 <button
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page === 1}
-                  className="bg-transparent border border-[var(--border)] text-[var(--text-dim)] px-3 py-1.5 cursor-pointer font-['Share_Tech_Mono'] disabled:opacity-50 disabled:cursor-not-allowed hover:border-[var(--lime-dim)] transition-colors"
+                  className="bg-transparent border border-(--border) text-(--text-dim) px-3 py-1.5 cursor-pointer font-['Share_Tech_Mono'] disabled:opacity-50 disabled:cursor-not-allowed hover:border-(--lime-dim) transition-colors"
                 >
                   ← PREV
                 </button>
-                <span className="text-[var(--text-dim)] tracking-widest">
+                <span className="text-(--text-dim) tracking-widest">
                   {page} / {pageCount}
                 </span>
                 <button
                   onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
                   disabled={page === pageCount}
-                  className="bg-transparent border border-[var(--border)] text-[var(--text-dim)] px-3 py-1.5 cursor-pointer font-['Share_Tech_Mono'] disabled:opacity-50 disabled:cursor-not-allowed hover:border-[var(--lime-dim)] transition-colors"
+                  className="bg-transparent border border-(--border) text-(--text-dim) px-3 py-1.5 cursor-pointer font-['Share_Tech_Mono'] disabled:opacity-50 disabled:cursor-not-allowed hover:border-(--lime-dim) transition-colors"
                 >
                   NEXT →
                 </button>

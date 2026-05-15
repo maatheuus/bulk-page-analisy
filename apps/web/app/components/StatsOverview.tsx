@@ -10,7 +10,9 @@ export function StatsOverview({ results }: StatsOverviewProps) {
   const doneResults = results.filter((r) => r.status === "done");
 
   const avg = (key: keyof UrlResult) => {
-    const vals = doneResults.map((r) => r[key]).filter((v) => v !== null) as number[];
+    const vals = doneResults
+      .map((r) => r[key])
+      .filter((v) => v !== null) as number[];
     if (!vals.length) return null;
     return vals.reduce((a, b) => a + b, 0) / vals.length;
   };
@@ -18,19 +20,19 @@ export function StatsOverview({ results }: StatsOverviewProps) {
   function scoreClass(v: number | null, type: "perf" | "ms" | "cls"): string {
     if (v === null) return "";
     if (type === "perf") {
-      if (v >= 90) return "text-[var(--lime)]";
-      if (v >= 50) return "text-[var(--amber)]";
-      return "text-[var(--red)]";
+      if (v >= 90) return "text-(--lime)";
+      if (v >= 50) return "text-(--amber)";
+      return "text-(--red)";
     }
     if (type === "ms") {
-      if (v <= 1500) return "text-[var(--lime)]";
-      if (v <= 3500) return "text-[var(--amber)]";
-      return "text-[var(--red)]";
+      if (v <= 1500) return "text-(--lime)";
+      if (v <= 3500) return "text-(--amber)";
+      return "text-(--red)";
     }
     if (type === "cls") {
-      if (v <= 0.1) return "text-[var(--lime)]";
-      if (v <= 0.25) return "text-[var(--amber)]";
-      return "text-[var(--red)]";
+      if (v <= 0.1) return "text-(--lime)";
+      if (v <= 0.25) return "text-(--amber)";
+      return "text-(--red)";
     }
     return "";
   }
@@ -46,13 +48,41 @@ export function StatsOverview({ results }: StatsOverviewProps) {
   }
 
   const metrics = [
-    { label: "AVG LCP", val: fmtMs(avg("lcp")), cls: scoreClass(avg("lcp"), "ms") },
-    { label: "AVG CLS", val: fmt(avg("cls"), "", 3), cls: scoreClass(avg("cls"), "cls") },
-    { label: "AVG INP", val: fmtMs(avg("inp")), cls: scoreClass(avg("inp"), "ms") },
-    { label: "AVG TTFB", val: fmtMs(avg("ttfb")), cls: scoreClass(avg("ttfb"), "ms") },
-    { label: "AVG PERF", val: avg("perfScore") !== null ? `${Math.round(avg("perfScore")!)}` : "—", cls: scoreClass(avg("perfScore"), "perf") },
-    { label: "AVG SEO", val: avg("seoScore") !== null ? `${Math.round(avg("seoScore")!)}` : "—", cls: scoreClass(avg("seoScore"), "perf") },
-    { label: "AVG A11Y", val: avg("a11yScore") !== null ? `${Math.round(avg("a11yScore")!)}` : "—", cls: scoreClass(avg("a11yScore"), "perf") },
+    {
+      label: "AVG LCP",
+      val: fmtMs(avg("lcp")),
+      cls: scoreClass(avg("lcp"), "ms"),
+    },
+    {
+      label: "AVG CLS",
+      val: fmt(avg("cls"), "", 3),
+      cls: scoreClass(avg("cls"), "cls"),
+    },
+    {
+      label: "AVG INP",
+      val: fmtMs(avg("inp")),
+      cls: scoreClass(avg("inp"), "ms"),
+    },
+    {
+      label: "AVG TTFB",
+      val: fmtMs(avg("ttfb")),
+      cls: scoreClass(avg("ttfb"), "ms"),
+    },
+    {
+      label: "AVG PERF",
+      val: avg("perfScore") !== null ? `${Math.round(avg("perfScore")!)}` : "—",
+      cls: scoreClass(avg("perfScore"), "perf"),
+    },
+    {
+      label: "AVG SEO",
+      val: avg("seoScore") !== null ? `${Math.round(avg("seoScore")!)}` : "—",
+      cls: scoreClass(avg("seoScore"), "perf"),
+    },
+    {
+      label: "AVG A11Y",
+      val: avg("a11yScore") !== null ? `${Math.round(avg("a11yScore")!)}` : "—",
+      cls: scoreClass(avg("a11yScore"), "perf"),
+    },
   ];
 
   const descriptions: Record<string, string> = {
@@ -70,11 +100,15 @@ export function StatsOverview({ results }: StatsOverviewProps) {
       {metrics.map((m) => (
         <div
           key={m.label}
-          className="bg-[var(--bg)] border border-[var(--border)] px-3.5 py-2 flex flex-col gap-0.5"
+          className="bg-(--bg) border border-(--border) px-3.5 py-2 flex flex-col gap-0.5"
           title={descriptions[m.label]}
         >
-          <span className="text-[0.6rem] text-[var(--text-muted)] tracking-widest uppercase">{m.label}</span>
-          <span className={`${m.cls} text-[0.9rem] font-['Orbitron'] font-bold`}>
+          <span className="text-[0.6rem] text-(--text-muted) tracking-widest uppercase">
+            {m.label}
+          </span>
+          <span
+            className={`${m.cls} text-[0.9rem] font-['Orbitron'] font-bold`}
+          >
             {m.val}
           </span>
         </div>
