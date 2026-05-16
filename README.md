@@ -13,6 +13,27 @@ Web Performance Intelligence System — analisa Core Web Vitals, Lighthouse scor
 - **AI**: Google Gemini 2.5 Flash (relatórios de performance)
 - **Infra**: Docker Compose (totalmente self-hosted)
 
+## Testes
+
+```bash
+yarn test
+```
+
+Roda os testes de todas as workspaces. Para rodar individualmente:
+
+```bash
+yarn workspace @bulk/web test      # utils (scoreClass, fmt, fmtMs, fetchWithRetry...)
+yarn workspace @bulk/api test      # ai helpers + rotas da API
+```
+
+| Suite | Testes | Cobertura |
+|---|---|---|
+| `apps/web/app/utils.test.ts` | 42 | `scoreClass`, `fmt`, `fmtMs`, `statusColor`, `fetchWithRetry` (retry, 401 skip, auth headers) |
+| `apps/api/src/ai.test.ts` | 13 | `validateLinks` (200/403/404/405/network/duplicates/batching), `callGemini` (payload, modelo, erro 429) |
+| `apps/api/src/routes/jobs.test.ts` | 13 | `POST /jobs` (validação), `GET /jobs/:id`, `POST /jobs/:id/cancel`, `POST /jobs/:id/ai-report` |
+
+Framework: **Vitest** — roda localmente sem Docker, sem banco de dados.
+
 ## Pré-requisitos
 
 - [Docker](https://docs.docker.com/get-docker/) + Docker Compose

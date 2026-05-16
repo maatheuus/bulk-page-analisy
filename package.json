@@ -12,7 +12,8 @@
     "dev:web": "yarn workspace @bulk/web dev",
     "dev:worker": "yarn workspace @bulk/worker dev",
     "db:generate": "yarn workspace @bulk/db generate",
-    "db:migrate": "yarn workspace @bulk/db migrate"
+    "db:migrate": "yarn workspace @bulk/db migrate",
+    "test": "yarn workspace @bulk/web test && yarn workspace @bulk/api test"
   },
   "devDependencies": {
     "typescript": "^5.5.0"
