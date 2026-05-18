@@ -1,9 +1,23 @@
 import { Worker } from "bullmq";
 import { createDb, jobs, urlResults, logs } from "@bulk/db";
 import { eq, sql } from "drizzle-orm";
-import puppeteer from "puppeteer";
+import puppeteer, { type Browser } from "puppeteer";
 import { nanoid } from "nanoid";
 import { redisConnection } from "./queue";
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const CHROME_FLAGS = [
+  "--headless=new",
+  "--no-sandbox",
+  "--disable-setuid-sandbox",
+  "--disable-dev-shm-usage",
+  "--disable-gpu",
+];
+
+const LIGHTHOUSE_TIMEOUT_MS = 90_000;
+
+// ─── Domain rate limiter ──────────────────────────────────────────────────────
 
 const domainConcurrency = new Map<string, number>();
 const DOMAIN_RATE_LIMIT = parseInt(process.env.DOMAIN_RATE_LIMIT ?? "2", 10);
@@ -21,76 +35,134 @@ function releaseDomainSlot(domain: string): void {
   else domainConcurrency.set(domain, current - 1);
 }
 
-const CHROME_FLAGS = [
-  "--headless=new",
-  "--no-sandbox",
-  "--disable-setuid-sandbox",
-  "--disable-dev-shm-usage",
-  "--disable-gpu",
-];
+// ─── Timeout helper ───────────────────────────────────────────────────────────
 
-async function runLighthouse(url: string, formFactor: "mobile" | "desktop" = "desktop") {
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(
+        () => reject(new Error(`Lighthouse timed out after ${ms}ms: ${label}`)),
+        ms
+      )
+    ),
+  ]);
+}
+
+// ─── Browser pool ─────────────────────────────────────────────────────────────
+
+class BrowserPool {
+  private available: Browser[];
+  private waiters: Array<(b: Browser) => void> = [];
+
+  constructor(browsers: Browser[]) {
+    this.available = [...browsers];
+  }
+
+  async acquire(): Promise<Browser> {
+    if (this.available.length > 0) return this.available.pop()!;
+    // Safety valve: pool size == concurrency so this should never block in normal operation
+    return new Promise((resolve) => this.waiters.push(resolve));
+  }
+
+  async release(browser: Browser, opts: { crashed?: boolean } = {}): Promise<void> {
+    let next = browser;
+    if (opts.crashed || !browser.isConnected()) {
+      try { await browser.close(); } catch { /* already dead */ }
+      next = await puppeteer.launch({ headless: true, args: CHROME_FLAGS });
+    }
+    const waiter = this.waiters.shift();
+    if (waiter) waiter(next);
+    else this.available.push(next);
+  }
+
+  async close(): Promise<void> {
+    await Promise.allSettled(this.available.map((b) => b.close()));
+    this.available = [];
+  }
+}
+
+async function createBrowserPool(size: number): Promise<BrowserPool> {
+  const browsers = await Promise.all(
+    Array.from({ length: size }, () =>
+      puppeteer.launch({ headless: true, args: CHROME_FLAGS })
+    )
+  );
+  return new BrowserPool(browsers);
+}
+
+// ─── Lighthouse runner ────────────────────────────────────────────────────────
+
+async function runLighthouse(
+  browser: Browser,
+  url: string,
+  formFactor: "mobile" | "desktop" = "desktop"
+) {
   const { default: lighthouse } = await import("lighthouse");
 
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: CHROME_FLAGS,
-  });
+  const port = parseInt(new URL(browser.wsEndpoint()).port, 10);
 
-  try {
-    const port = new URL(browser.wsEndpoint()).port;
-
-    const screenEmulation = formFactor === "mobile"
+  const screenEmulation =
+    formFactor === "mobile"
       ? { mobile: true, width: 390, height: 844, deviceScaleFactor: 3, disabled: false }
       : { disabled: true };
 
-    const result = await lighthouse(url, {
-      port: parseInt(port, 10),
-      output: "json",
-      logLevel: "silent",
-      onlyCategories: ["performance", "seo", "accessibility"],
-      formFactor,
-      screenEmulation,
-    });
+  const result = await lighthouse(url, {
+    port,
+    output: "json",
+    logLevel: "silent",
+    onlyCategories: ["performance", "seo", "accessibility"],
+    formFactor,
+    screenEmulation,
+    maxWaitForLoad: 45_000,
+    maxWaitForFcp: 15_000,
+  });
 
-    if (!result?.lhr) throw new Error("No Lighthouse result");
+  if (!result?.lhr) throw new Error("No Lighthouse result");
 
-    const { lhr } = result;
-    const audits = lhr.audits;
+  const { lhr } = result;
+  const audits = lhr.audits;
 
-    const opportunities = Object.values(audits)
-      .filter((a) => a.details?.type === "opportunity" && (a.score ?? 1) < 1 && a.details?.overallSavingsMs)
-      .sort((a, b) => (b.details?.overallSavingsMs ?? 0) - (a.details?.overallSavingsMs ?? 0))
-      .slice(0, 5)
-      .map((a) => ({
-        id: a.id,
-        title: a.title,
-        description: a.description,
-        savingsMs: Math.round(a.details?.overallSavingsMs ?? 0),
-      }));
+  const opportunities = Object.values(audits)
+    .filter((a) => a.details?.type === "opportunity" && (a.score ?? 1) < 1 && (a.details as any)?.overallSavingsMs)
+    .sort((a, b) => ((b.details as any)?.overallSavingsMs ?? 0) - ((a.details as any)?.overallSavingsMs ?? 0))
+    .slice(0, 5)
+    .map((a) => ({
+      id: a.id,
+      title: a.title,
+      description: a.description,
+      savingsMs: Math.round((a.details as any)?.overallSavingsMs ?? 0),
+    }));
 
-    return {
-      lcp: audits["largest-contentful-paint"]?.numericValue ?? null,
-      cls: audits["cumulative-layout-shift"]?.numericValue ?? null,
-      inp: audits["interaction-to-next-paint"]?.numericValue ?? null,
-      ttfb: audits["server-response-time"]?.numericValue ?? null,
-      perfScore: Math.round((lhr.categories.performance?.score ?? 0) * 100),
-      seoScore: Math.round((lhr.categories.seo?.score ?? 0) * 100),
-      a11yScore: Math.round((lhr.categories.accessibility?.score ?? 0) * 100),
-      opportunities: opportunities.length > 0 ? JSON.stringify(opportunities) : null,
-    };
-  } finally {
-    await browser.close();
-  }
+  return {
+    lcp: audits["largest-contentful-paint"]?.numericValue ?? null,
+    cls: audits["cumulative-layout-shift"]?.numericValue ?? null,
+    inp: audits["interaction-to-next-paint"]?.numericValue ?? null,
+    ttfb: audits["server-response-time"]?.numericValue ?? null,
+    perfScore: Math.round((lhr.categories.performance?.score ?? 0) * 100),
+    seoScore: Math.round((lhr.categories.seo?.score ?? 0) * 100),
+    a11yScore: Math.round((lhr.categories.accessibility?.score ?? 0) * 100),
+    opportunities: opportunities.length > 0 ? JSON.stringify(opportunities) : null,
+  };
 }
+
+// ─── Worker factory ───────────────────────────────────────────────────────────
 
 export function startAuditWorker(databaseUrl: string) {
   const db = createDb(databaseUrl);
   const concurrency = parseInt(process.env.AUDIT_CONCURRENCY ?? "5", 10);
 
-  return new Worker(
+  let pool: BrowserPool;
+  const poolReady = createBrowserPool(concurrency).then((p) => {
+    pool = p;
+    console.log(`[audit] Browser pool ready (${concurrency} browsers)`);
+  });
+
+  const worker = new Worker(
     "audit",
     async (job) => {
+      await poolReady;
+
       const { jobId, url, resultId, formFactor = "desktop" } = job.data as {
         jobId: string;
         url: string;
@@ -105,13 +177,17 @@ export function startAuditWorker(databaseUrl: string) {
 
       const [currentJob] = await db.select().from(jobs).where(eq(jobs.id, jobId));
       if (!currentJob || currentJob.status === "cancelled") {
-        await db.update(urlResults).set({ status: "error", error: "Cancelled" }).where(eq(urlResults.id, resultId));
+        await db
+          .update(urlResults)
+          .set({ status: "error", error: "Cancelled" })
+          .where(eq(urlResults.id, resultId));
         return;
       }
 
       const maxAttempts = job.opts.attempts ?? 1;
       const isLastAttempt = job.attemptsMade + 1 >= maxAttempts;
       const domain = new URL(url).hostname;
+      const browser = await pool.acquire();
 
       await acquireDomainSlot(domain);
       try {
@@ -122,7 +198,11 @@ export function startAuditWorker(databaseUrl: string) {
           message: `Starting Lighthouse audit for ${url}${job.attemptsMade > 0 ? ` (attempt ${job.attemptsMade + 1}/${maxAttempts})` : ""}`,
         });
 
-        const metrics = await runLighthouse(url, formFactor as "mobile" | "desktop");
+        const metrics = await withTimeout(
+          runLighthouse(browser, url, formFactor as "mobile" | "desktop"),
+          LIGHTHOUSE_TIMEOUT_MS,
+          url
+        );
 
         await db
           .update(urlResults)
@@ -172,6 +252,8 @@ export function startAuditWorker(databaseUrl: string) {
         throw err;
       } finally {
         releaseDomainSlot(domain);
+        await pool.release(browser, { crashed: !browser.isConnected() });
+
         if (isLastAttempt) {
           const [current] = await db.select().from(jobs).where(eq(jobs.id, jobId));
           if (
@@ -187,6 +269,17 @@ export function startAuditWorker(databaseUrl: string) {
         }
       }
     },
-    { connection: redisConnection, concurrency }
+    {
+      connection: redisConnection,
+      concurrency,
+      lockDuration: 300_000,
+      lockRenewTime: 30_000,
+    }
   );
+
+  worker.on("closed", () => {
+    pool?.close().catch(console.error);
+  });
+
+  return worker;
 }

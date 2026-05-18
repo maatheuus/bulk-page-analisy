@@ -1,15 +1,18 @@
+import { aiReports, createDb, jobs, logs, urlResults } from "@bulk/db";
+import { and, avg, count, desc, eq, like, sql } from "drizzle-orm";
 import { FastifyInstance } from "fastify";
 import { nanoid } from "nanoid";
-import { createDb, jobs, urlResults, logs, aiReports } from "@bulk/db";
-import { eq, desc, count, and, sql, avg, like } from "drizzle-orm";
 import { callGemini, validateLinks } from "../ai";
-import { crawlQueue, auditQueue } from "../queue";
+import { auditQueue, crawlQueue } from "../queue";
 
 export async function jobRoutes(app: FastifyInstance) {
   const db = createDb(process.env.DATABASE_URL!);
 
   app.post("/jobs", async (req, reply) => {
-    const { siteUrl, formFactor } = req.body as { siteUrl: string; formFactor?: string };
+    const { siteUrl, formFactor } = req.body as {
+      siteUrl: string;
+      formFactor?: string;
+    };
 
     if (!siteUrl) {
       return reply.status(400).send({ error: "siteUrl is required" });
@@ -24,10 +27,23 @@ export async function jobRoutes(app: FastifyInstance) {
 
     const factor = formFactor === "mobile" ? "mobile" : "desktop";
     const id = nanoid();
-    await db.insert(jobs).values({ id, siteUrl: url.origin, status: "pending", formFactor: factor });
-    await crawlQueue.add("crawl", { jobId: id, siteUrl: url.origin, formFactor: factor });
+    await db
+      .insert(jobs)
+      .values({
+        id,
+        siteUrl: url.origin,
+        status: "pending",
+        formFactor: factor,
+      });
+    await crawlQueue.add("crawl", {
+      jobId: id,
+      siteUrl: url.origin,
+      formFactor: factor,
+    });
 
-    return reply.status(201).send({ id, siteUrl: url.origin, status: "pending" });
+    return reply
+      .status(201)
+      .send({ id, siteUrl: url.origin, status: "pending" });
   });
 
   app.get<{ Querystring: { site?: string } }>("/jobs", async (req, reply) => {
@@ -41,33 +57,43 @@ export async function jobRoutes(app: FastifyInstance) {
     return reply.send(list);
   });
 
-  app.get<{ Querystring: { a: string; b: string } }>("/jobs/compare", async (req, reply) => {
-    const { a, b } = req.query;
-    if (!a || !b) return reply.status(400).send({ error: "Params a and b required" });
+  app.get<{ Querystring: { a: string; b: string } }>(
+    "/jobs/compare",
+    async (req, reply) => {
+      const { a, b } = req.query;
+      if (!a || !b)
+        return reply.status(400).send({ error: "Params a and b required" });
 
-    async function getJobStats(jobId: string) {
-      const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId));
-      if (!job) return null;
-      const [stats] = await db
-        .select({
-          avgLcp: avg(urlResults.lcp),
-          avgCls: avg(urlResults.cls),
-          avgInp: avg(urlResults.inp),
-          avgTtfb: avg(urlResults.ttfb),
-          avgPerf: avg(urlResults.perfScore),
-          avgSeo: avg(urlResults.seoScore),
-          avgA11y: avg(urlResults.a11yScore),
-        })
-        .from(urlResults)
-        .where(and(eq(urlResults.jobId, jobId), eq(urlResults.status, "done")));
-      return { job, stats };
-    }
+      async function getJobStats(jobId: string) {
+        const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId));
+        if (!job) return null;
+        const [stats] = await db
+          .select({
+            avgLcp: avg(urlResults.lcp),
+            avgCls: avg(urlResults.cls),
+            avgInp: avg(urlResults.inp),
+            avgTtfb: avg(urlResults.ttfb),
+            avgPerf: avg(urlResults.perfScore),
+            avgSeo: avg(urlResults.seoScore),
+            avgA11y: avg(urlResults.a11yScore),
+          })
+          .from(urlResults)
+          .where(
+            and(eq(urlResults.jobId, jobId), eq(urlResults.status, "done")),
+          );
+        return { job, stats };
+      }
 
-    const [dataA, dataB] = await Promise.all([getJobStats(a), getJobStats(b)]);
-    if (!dataA || !dataB) return reply.status(404).send({ error: "One or both jobs not found" });
+      const [dataA, dataB] = await Promise.all([
+        getJobStats(a),
+        getJobStats(b),
+      ]);
+      if (!dataA || !dataB)
+        return reply.status(404).send({ error: "One or both jobs not found" });
 
-    return reply.send({ a: dataA, b: dataB });
-  });
+      return reply.send({ a: dataA, b: dataB });
+    },
+  );
 
   app.get("/logs", async (_req, reply) => {
     const list = await db
@@ -79,60 +105,87 @@ export async function jobRoutes(app: FastifyInstance) {
   });
 
   app.get<{ Params: { id: string } }>("/jobs/:id", async (req, reply) => {
-    const [job] = await db.select().from(jobs).where(eq(jobs.id, req.params.id));
+    const [job] = await db
+      .select()
+      .from(jobs)
+      .where(eq(jobs.id, req.params.id));
     if (!job) return reply.status(404).send({ error: "Not found" });
     return reply.send(job);
   });
 
-  app.get<{ Params: { id: string }; Querystring: { page?: string; sort?: string; order?: string } }>(
-    "/jobs/:id/results",
-    async (req, reply) => {
-      const page = parseInt(req.query.page ?? "1", 10);
-      const pageSize = 50;
-      const offset = (page - 1) * pageSize;
+  app.get<{
+    Params: { id: string };
+    Querystring: { page?: string; sort?: string; order?: string };
+  }>("/jobs/:id/results", async (req, reply) => {
+    const page = parseInt(req.query.page ?? "1", 10);
+    const pageSize = 50;
+    const offset = (page - 1) * pageSize;
 
-      const [job] = await db.select().from(jobs).where(eq(jobs.id, req.params.id));
-      if (!job) return reply.status(404).send({ error: "Not found" });
-
-      const results = await db
-        .select()
-        .from(urlResults)
-        .where(eq(urlResults.jobId, req.params.id))
-        .limit(pageSize)
-        .offset(offset);
-
-      const [{ total }] = await db
-        .select({ total: count() })
-        .from(urlResults)
-        .where(eq(urlResults.jobId, req.params.id));
-
-      return reply.send({ results, total, page, pageSize });
-    }
-  );
-
-  app.get<{ Params: { id: string } }>("/jobs/:id/export", async (req, reply) => {
-    const [job] = await db.select().from(jobs).where(eq(jobs.id, req.params.id));
+    const [job] = await db
+      .select()
+      .from(jobs)
+      .where(eq(jobs.id, req.params.id));
     if (!job) return reply.status(404).send({ error: "Not found" });
 
     const results = await db
       .select()
       .from(urlResults)
+      .where(eq(urlResults.jobId, req.params.id))
+      .limit(pageSize)
+      .offset(offset);
+
+    const [{ total }] = await db
+      .select({ total: count() })
+      .from(urlResults)
       .where(eq(urlResults.jobId, req.params.id));
 
-    const header = "url,status,lcp,cls,inp,ttfb,perf_score,seo_score,a11y_score,error\n";
-    const rows = results
-      .map((r) =>
-        [r.url, r.status, r.lcp, r.cls, r.inp, r.ttfb, r.perfScore, r.seoScore, r.a11yScore, r.error ?? ""]
-          .map((v) => (v == null ? "" : String(v)))
-          .join(",")
-      )
-      .join("\n");
-
-    reply
-      .header("Content-Type", "text/csv")
-      .header("Content-Disposition", `attachment; filename="job-${req.params.id}.csv"`)
-      .send(header + rows);
+    return reply.send({ results, total, page, pageSize });
   });
+
+  app.get<{ Params: { id: string } }>(
+    "/jobs/:id/export",
+    async (req, reply) => {
+      const [job] = await db
+        .select()
+        .from(jobs)
+        .where(eq(jobs.id, req.params.id));
+      if (!job) return reply.status(404).send({ error: "Not found" });
+
+      const results = await db
+        .select()
+        .from(urlResults)
+        .where(eq(urlResults.jobId, req.params.id));
+
+      const header =
+        "url,status,lcp,cls,inp,ttfb,perf_score,seo_score,a11y_score,error\n";
+      const rows = results
+        .map((r) =>
+          [
+            r.url,
+            r.status,
+            r.lcp,
+            r.cls,
+            r.inp,
+            r.ttfb,
+            r.perfScore,
+            r.seoScore,
+            r.a11yScore,
+            r.error ?? "",
+          ]
+            .map((v) => (v == null ? "" : String(v)))
+            .join(","),
+        )
+        .join("\n");
+
+      reply
+        .header("Content-Type", "text/csv")
+        .header(
+          "Content-Disposition",
+          `attachment; filename="job-${req.params.id}.csv"`,
+        )
+        .send(header + rows);
+    },
+  );
 
   app.get<{ Params: { id: string } }>("/jobs/:id/logs", async (req, reply) => {
     const list = await db
@@ -154,7 +207,7 @@ export async function jobRoutes(app: FastifyInstance) {
         .where(and(eq(urlResults.id, resultId), eq(urlResults.jobId, id)));
       if (!result) return reply.status(404).send({ error: "Not found" });
       return reply.send(result);
-    }
+    },
   );
 
   const LINK_GUIDANCE = `
@@ -188,42 +241,65 @@ LINKS — CRITICAL RULES:
 - If unsure about an exact URL, use the root section: https://web.dev/explore/fast or https://mdn.mozilla.org/en-US/docs/Web/Performance
 - NEVER invent article slugs. Use only URLs listed above or the section roots.`;
 
-  app.post<{ Params: { id: string } }>("/jobs/:id/ai-report", async (req, reply) => {
-    const GEMINI_KEY = process.env.GEMINI_API_KEY;
-    if (!GEMINI_KEY) return reply.status(503).send({ error: "AI not configured" });
+  app.post<{ Params: { id: string } }>(
+    "/jobs/:id/ai-report",
+    async (req, reply) => {
+      const GEMINI_KEY = process.env.GEMINI_API_KEY;
+      if (!GEMINI_KEY)
+        return reply.status(503).send({ error: "AI not configured" });
 
-    const { id } = req.params;
-    const [job] = await db.select().from(jobs).where(eq(jobs.id, id));
-    if (!job) return reply.status(404).send({ error: "Not found" });
-    if (job.status !== "done") return reply.status(400).send({ error: "Job not finished" });
+      const { id } = req.params;
+      const [job] = await db.select().from(jobs).where(eq(jobs.id, id));
+      if (!job) return reply.status(404).send({ error: "Not found" });
+      if (job.status !== "done")
+        return reply.status(400).send({ error: "Job not finished" });
 
-    const doneFilter = and(eq(urlResults.jobId, id), eq(urlResults.status, "done"));
-    const [[stats], worstPages] = await Promise.all([
-      db.select({
-        avgLcp: avg(urlResults.lcp),
-        avgCls: avg(urlResults.cls),
-        avgInp: avg(urlResults.inp),
-        avgTtfb: avg(urlResults.ttfb),
-        avgPerf: avg(urlResults.perfScore),
-        avgSeo: avg(urlResults.seoScore),
-        avgA11y: avg(urlResults.a11yScore),
-      }).from(urlResults).where(doneFilter),
-      db.select().from(urlResults).where(doneFilter).orderBy(urlResults.perfScore).limit(10),
-    ]);
+      const doneFilter = and(
+        eq(urlResults.jobId, id),
+        eq(urlResults.status, "done"),
+      );
+      const [[stats], worstPages] = await Promise.all([
+        db
+          .select({
+            avgLcp: avg(urlResults.lcp),
+            avgCls: avg(urlResults.cls),
+            avgInp: avg(urlResults.inp),
+            avgTtfb: avg(urlResults.ttfb),
+            avgPerf: avg(urlResults.perfScore),
+            avgSeo: avg(urlResults.seoScore),
+            avgA11y: avg(urlResults.a11yScore),
+          })
+          .from(urlResults)
+          .where(doneFilter),
+        db
+          .select()
+          .from(urlResults)
+          .where(doneFilter)
+          .orderBy(urlResults.perfScore)
+          .limit(10),
+      ]);
 
-    const oppCounts = new Map<string, number>();
-    for (const page of worstPages) {
-      if (!page.opportunities) continue;
-      const ops = JSON.parse(page.opportunities) as Array<{ title: string; savingsMs: number }>;
-      for (const op of ops) {
-        oppCounts.set(op.title, (oppCounts.get(op.title) ?? 0) + op.savingsMs);
+      const oppCounts = new Map<string, number>();
+      for (const page of worstPages) {
+        if (!page.opportunities) continue;
+        const ops = JSON.parse(page.opportunities) as Array<{
+          title: string;
+          savingsMs: number;
+        }>;
+        for (const op of ops) {
+          oppCounts.set(
+            op.title,
+            (oppCounts.get(op.title) ?? 0) + op.savingsMs,
+          );
+        }
       }
-    }
-    const topOpps = [...oppCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
+      const topOpps = [...oppCounts.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 8);
 
-    const n = (v: string | null) => (v ? parseFloat(v).toFixed(1) : "N/A");
+      const n = (v: string | null) => (v ? parseFloat(v).toFixed(1) : "N/A");
 
-    const prompt = `You are a web performance expert analyzing Lighthouse audit results. Provide specific, actionable recommendations with real resource links.
+      const prompt = `You are a web performance expert analyzing Lighthouse audit results. Provide specific, actionable recommendations with real resource links.
 
 SITE: ${job.siteUrl}
 FORM FACTOR: ${job.formFactor}
@@ -239,8 +315,13 @@ AGGREGATE METRICS (averages across all pages):
 - Accessibility Score: ${n(stats.avgA11y)}/100
 
 WORST 5 PAGES:
-${worstPages.slice(0, 5).map((p, i) => `${i + 1}. ${p.url}
-   Perf: ${p.perfScore ?? "N/A"} | LCP: ${p.lcp ?? "N/A"}ms | CLS: ${p.cls ?? "N/A"} | INP: ${p.inp ?? "N/A"}ms | TTFB: ${p.ttfb ?? "N/A"}ms`).join("\n")}
+${worstPages
+  .slice(0, 5)
+  .map(
+    (p, i) => `${i + 1}. ${p.url}
+   Perf: ${p.perfScore ?? "N/A"} | LCP: ${p.lcp ?? "N/A"}ms | CLS: ${p.cls ?? "N/A"} | INP: ${p.inp ?? "N/A"}ms | TTFB: ${p.ttfb ?? "N/A"}ms`,
+  )
+  .join("\n")}
 
 TOP IMPROVEMENT OPPORTUNITIES (aggregated across pages):
 ${topOpps.map(([title, ms]) => `- ${title} (~${Math.round(ms / 1000)}s total savings)`).join("\n") || "No specific opportunities detected"}
@@ -270,25 +351,36 @@ Respond with a structured performance report using this exact format:
 
 ${LINK_GUIDANCE}`;
 
-    let raw: string;
-    try {
-      raw = await callGemini(GEMINI_KEY, prompt, { temperature: 0.4, maxOutputTokens: 8192 });
-    } catch (e: any) {
-      return reply.status(502).send({ error: "AI service error", detail: e.detail });
-    }
-    const report = await validateLinks(raw);
+      let raw: string;
+      try {
+        raw = await callGemini(GEMINI_KEY, prompt, {
+          temperature: 0.4,
+          maxOutputTokens: 8192,
+        });
+      } catch (e: any) {
+        return reply
+          .status(502)
+          .send({ error: "AI service error", detail: e.detail });
+      }
+      const report = await validateLinks(raw);
 
-    const reportId = nanoid();
-    await db.insert(aiReports).values({ id: reportId, jobId: id, report });
+      const reportId = nanoid();
+      await db.insert(aiReports).values({ id: reportId, jobId: id, report });
 
-    return reply.send({ id: reportId, report, createdAt: new Date().toISOString() });
-  });
+      return reply.send({
+        id: reportId,
+        report,
+        createdAt: new Date().toISOString(),
+      });
+    },
+  );
 
   app.post<{ Params: { id: string; resultId: string } }>(
     "/jobs/:id/results/:resultId/ai-tips",
     async (req, reply) => {
       const GEMINI_KEY = process.env.GEMINI_API_KEY;
-      if (!GEMINI_KEY) return reply.status(503).send({ error: "AI not configured" });
+      if (!GEMINI_KEY)
+        return reply.status(503).send({ error: "AI not configured" });
 
       const { id, resultId } = req.params;
       const [result] = await db
@@ -297,10 +389,18 @@ ${LINK_GUIDANCE}`;
         .where(and(eq(urlResults.id, resultId), eq(urlResults.jobId, id)));
 
       if (!result || result.status !== "done") {
-        return reply.status(404).send({ error: "Result not found or not done" });
+        return reply
+          .status(404)
+          .send({ error: "Result not found or not done" });
       }
 
-      const opportunities = result.opportunities ? (JSON.parse(result.opportunities) as Array<{ title: string; description: string; savingsMs: number }>) : [];
+      const opportunities = result.opportunities
+        ? (JSON.parse(result.opportunities) as Array<{
+            title: string;
+            description: string;
+            savingsMs: number;
+          }>)
+        : [];
 
       const prompt = `You are a web performance expert. Analyze this single page's Lighthouse results and give specific, actionable tips.
 
@@ -327,23 +427,29 @@ ${LINK_GUIDANCE}`;
 
       let raw: string;
       try {
-        raw = await callGemini(GEMINI_KEY, prompt, { temperature: 0.3, maxOutputTokens: 4096 });
+        raw = await callGemini(GEMINI_KEY, prompt, {
+          temperature: 0.3,
+          maxOutputTokens: 4096,
+        });
       } catch {
         return reply.status(502).send({ error: "AI service error" });
       }
       const tips = await validateLinks(raw);
       return reply.send({ tips });
-    }
+    },
   );
 
-  app.get<{ Params: { id: string } }>("/jobs/:id/ai-reports", async (req, reply) => {
-    const list = await db
-      .select({ id: aiReports.id, createdAt: aiReports.createdAt })
-      .from(aiReports)
-      .where(eq(aiReports.jobId, req.params.id))
-      .orderBy(desc(aiReports.createdAt));
-    return reply.send(list);
-  });
+  app.get<{ Params: { id: string } }>(
+    "/jobs/:id/ai-reports",
+    async (req, reply) => {
+      const list = await db
+        .select({ id: aiReports.id, createdAt: aiReports.createdAt })
+        .from(aiReports)
+        .where(eq(aiReports.jobId, req.params.id))
+        .orderBy(desc(aiReports.createdAt));
+      return reply.send(list);
+    },
+  );
 
   app.get<{ Params: { id: string; reportId: string } }>(
     "/jobs/:id/ai-reports/:reportId",
@@ -351,35 +457,112 @@ ${LINK_GUIDANCE}`;
       const [r] = await db
         .select()
         .from(aiReports)
-        .where(and(eq(aiReports.id, req.params.reportId), eq(aiReports.jobId, req.params.id)));
+        .where(
+          and(
+            eq(aiReports.id, req.params.reportId),
+            eq(aiReports.jobId, req.params.id),
+          ),
+        );
       if (!r) return reply.status(404).send({ error: "Not found" });
       return reply.send(r);
-    }
+    },
   );
 
-  app.post<{ Params: { id: string } }>("/jobs/:id/cancel", async (req, reply) => {
-    const { id } = req.params;
+  app.post<{ Params: { id: string } }>(
+    "/jobs/:id/resume",
+    async (req, reply) => {
+      const { id } = req.params;
+      const [job] = await db.select().from(jobs).where(eq(jobs.id, id));
+      if (!job) return reply.status(404).send({ error: "Not found" });
 
-    const [job] = await db.select().from(jobs).where(eq(jobs.id, id));
-    if (!job) return reply.status(404).send({ error: "Not found" });
+      if (job.status === "done") {
+        return reply.status(400).send({ error: "Job already completed" });
+      }
 
-    const activeStatuses = ["pending", "crawling", "auditing"];
-    if (!activeStatuses.includes(job.status)) {
-      return reply.status(400).send({ error: "Job is not active" });
-    }
+      const toResume = await db
+        .select()
+        .from(urlResults)
+        .where(
+          and(eq(urlResults.jobId, id), sql`${urlResults.status} != 'done'`),
+        );
 
-    await db
-      .update(jobs)
-      .set({ status: "cancelled", finishedAt: new Date() })
-      .where(eq(jobs.id, id));
+      if (toResume.length === 0) {
+        return reply.status(400).send({ error: "Nothing to resume" });
+      }
 
-    await db
-      .update(urlResults)
-      .set({ status: "error", error: "Cancelled" })
-      .where(and(eq(urlResults.jobId, id), sql`${urlResults.status} IN ('queued', 'running')`));
+      const errorCount = toResume.filter((r) => r.status === "error").length;
 
-    return reply.send({ ok: true });
-  });
+      await db
+        .update(urlResults)
+        .set({ status: "queued", error: null })
+        .where(
+          and(eq(urlResults.jobId, id), sql`${urlResults.status} != 'done'`),
+        );
+
+      await db
+        .update(jobs)
+        .set({
+          status: "auditing",
+          failedUrls: sql`GREATEST(0, ${jobs.failedUrls} - ${errorCount})`,
+          finishedAt: null,
+        })
+        .where(eq(jobs.id, id));
+
+      const auditJobs = toResume.map((r) => ({
+        name: "audit",
+        data: {
+          jobId: id,
+          url: r.url,
+          resultId: r.id,
+          formFactor: job.formFactor,
+        },
+        opts: {
+          attempts: 3,
+          backoff: { type: "exponential", delay: 5000 },
+          removeOnComplete: true,
+          removeOnFail: false,
+        },
+      }));
+
+      for (let i = 0; i < auditJobs.length; i += 100) {
+        await auditQueue.addBulk(auditJobs.slice(i, i + 100));
+      }
+
+      return reply.send({ ok: true, resumedCount: toResume.length });
+    },
+  );
+
+  app.post<{ Params: { id: string } }>(
+    "/jobs/:id/cancel",
+    async (req, reply) => {
+      const { id } = req.params;
+
+      const [job] = await db.select().from(jobs).where(eq(jobs.id, id));
+      if (!job) return reply.status(404).send({ error: "Not found" });
+
+      const activeStatuses = ["pending", "crawling", "auditing"];
+      if (!activeStatuses.includes(job.status)) {
+        return reply.status(400).send({ error: "Job is not active" });
+      }
+
+      await db
+        .update(jobs)
+        .set({ status: "cancelled", finishedAt: new Date() })
+        .where(eq(jobs.id, id));
+
+      await db
+        .update(urlResults)
+        .set({ status: "error", error: "Cancelled" })
+        .where(
+          and(
+            eq(urlResults.jobId, id),
+            sql`${urlResults.status} IN ('queued', 'running')`,
+          ),
+        );
+
+      return reply.send({ ok: true });
+    },
+  );
 
   app.post<{ Params: { id: string; resultId: string } }>(
     "/jobs/:id/results/:resultId/retry",
@@ -412,38 +595,47 @@ ${LINK_GUIDANCE}`;
       await auditQueue.add("audit", { jobId: id, url: result.url, resultId });
 
       return reply.send({ ok: true });
-    }
+    },
   );
 
-  app.get<{ Params: { id: string } }>("/jobs/:id/stream", async (req, reply) => {
-    const [job] = await db.select().from(jobs).where(eq(jobs.id, req.params.id));
-    if (!job) return reply.status(404).send({ error: "Not found" });
+  app.get<{ Params: { id: string } }>(
+    "/jobs/:id/stream",
+    async (req, reply) => {
+      const [job] = await db
+        .select()
+        .from(jobs)
+        .where(eq(jobs.id, req.params.id));
+      if (!job) return reply.status(404).send({ error: "Not found" });
 
-    reply.raw.writeHead(200, {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-      "Access-Control-Allow-Origin": "*",
-    });
+      reply.raw.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+        "Access-Control-Allow-Origin": "*",
+      });
 
-    const send = (data: object) => {
-      reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
-    };
+      const send = (data: object) => {
+        reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
+      };
 
-    const interval = setInterval(async () => {
-      const [current] = await db.select().from(jobs).where(eq(jobs.id, req.params.id));
-      if (!current) {
-        clearInterval(interval);
-        reply.raw.end();
-        return;
-      }
-      send(current);
-      if (current.status === "done" || current.status === "failed") {
-        clearInterval(interval);
-        reply.raw.end();
-      }
-    }, 1500);
+      const interval = setInterval(async () => {
+        const [current] = await db
+          .select()
+          .from(jobs)
+          .where(eq(jobs.id, req.params.id));
+        if (!current) {
+          clearInterval(interval);
+          reply.raw.end();
+          return;
+        }
+        send(current);
+        if (current.status === "done" || current.status === "failed") {
+          clearInterval(interval);
+          reply.raw.end();
+        }
+      }, 1500);
 
-    req.raw.on("close", () => clearInterval(interval));
-  });
+      req.raw.on("close", () => clearInterval(interval));
+    },
+  );
 }

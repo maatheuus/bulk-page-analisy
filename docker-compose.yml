@@ -63,7 +63,7 @@ services:
     environment:
       DATABASE_URL: postgres://bulk:bulk@postgres:5432/bulk_analyzer
       REDIS_URL: redis://redis:6379
-      AUDIT_CONCURRENCY: "5"
+      AUDIT_CONCURRENCY: "20"
       DOMAIN_RATE_LIMIT: "2"
     depends_on:
       migrate:

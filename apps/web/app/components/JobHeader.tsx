@@ -10,11 +10,23 @@ const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 interface JobHeaderProps {
   job: Job;
   onCancel?: () => void;
+  onResume?: () => void;
 }
 
-export function JobHeader({ job, onCancel }: JobHeaderProps) {
+export function JobHeader({ job, onCancel, onResume }: JobHeaderProps) {
   const [confirming, setConfirming] = useState(false);
+  const [resuming, setResuming] = useState(false);
   const isActive = job.status !== "done" && job.status !== "failed" && job.status !== "cancelled";
+  const isResumable = job.status === "cancelled" || job.status === "failed";
+
+  async function handleResume() {
+    setResuming(true);
+    try {
+      await onResume?.();
+    } finally {
+      setResuming(false);
+    }
+  }
 
   async function handleCancel() {
     if (!confirming) {
@@ -75,6 +87,15 @@ export function JobHeader({ job, onCancel }: JobHeaderProps) {
           }`}
         >
           {confirming ? "■ CONFIRM?" : "■ CANCEL"}
+        </button>
+      )}
+      {isResumable && (
+        <button
+          onClick={handleResume}
+          disabled={resuming}
+          className="bg-transparent border border-(--lime-dim) text-(--lime) px-3.5 py-1.5 font-['Share_Tech_Mono'] text-[0.7rem] tracking-widest cursor-pointer hover:bg-(--lime-glow) hover:border-(--lime) transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {resuming ? "RESUMING..." : "► RESUME"}
         </button>
       )}
       {job.status === "done" && (

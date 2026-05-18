@@ -43,6 +43,13 @@ export default function JobPage({
     }
   }
 
+  const handleResume = async () => {
+    const res = await fetchWithRetry(`${API}/jobs/${id}/resume`, { method: "POST" });
+    if (res.ok) {
+      window.location.reload();
+    }
+  };
+
   const handleRetry = async (resultId: string) => {
     try {
       const res = await fetchWithRetry(
@@ -198,6 +205,7 @@ export default function JobPage({
       <JobHeader
         job={job}
         onCancel={() => setJob((j) => (j ? { ...j, status: "cancelled" } : j))}
+        onResume={handleResume}
       />
 
       <div className="max-w-screen-xl mx-auto px-6 sm:px-10">
