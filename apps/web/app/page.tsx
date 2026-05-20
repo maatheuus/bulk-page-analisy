@@ -44,11 +44,11 @@ export default function HomePage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!url.trim()) return;
+    let targetUrl = url.trim();
+    if (!targetUrl) return;
 
-    if (!url.startsWith("http://") && !url.startsWith("https://")) {
-      setError("URL must start with http:// or https://");
-      return;
+    if (!targetUrl.startsWith("http://") && !targetUrl.startsWith("https://")) {
+      targetUrl = `https://${targetUrl}`;
     }
 
     setSubmitting(true);
@@ -57,7 +57,7 @@ export default function HomePage() {
       const res = await fetchWithRetry(`${API}/jobs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ siteUrl: url.trim(), formFactor }),
+        body: JSON.stringify({ siteUrl: targetUrl, formFactor }),
       });
       if (res.status === 401) {
         setNeedsAuth(true);
@@ -120,7 +120,7 @@ export default function HomePage() {
             type="text"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://example.com"
+            placeholder="example.com ou https://example.com"
             className="flex-1 bg-transparent border-none outline-none text-(--text) font-['Share_Tech_Mono'] text-[0.95rem] py-3.5 caret-(--lime)"
           />
           <button
