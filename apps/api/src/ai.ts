@@ -15,6 +15,7 @@ export async function callGemini(
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: opts,
       }),
+      signal: AbortSignal.timeout(30000),
     }
   );
   if (!res.ok) {

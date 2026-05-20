@@ -52,23 +52,30 @@ async function resolveAllUrls(siteUrl: string): Promise<string[]> {
   const initial = await fetchSitemapUrls(siteUrl);
   if (initial.length === 0) return [siteUrl];
 
-  // if sitemap index, fetch child sitemaps
   const allUrls: string[] = [];
-  for (const url of initial) {
-    if (url.endsWith(".xml")) {
-      try {
-        const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
-        if (!res.ok) continue;
-        const text = await res.text();
-        const childUrls = extractUrlsFromSitemap(text, siteUrl);
-        allUrls.push(...childUrls);
-      } catch {
-        continue;
-      }
-    } else {
-      allUrls.push(url);
-    }
+  const sitemapXmls = initial.filter(url => url.endsWith(".xml"));
+  const nonXmlUrls = initial.filter(url => !url.endsWith(".xml"));
+
+  allUrls.push(...nonXmlUrls);
+
+  const BATCH_SIZE = 5;
+  for (let i = 0; i < sitemapXmls.length; i += BATCH_SIZE) {
+    const batch = sitemapXmls.slice(i, i + BATCH_SIZE);
+    const results = await Promise.all(
+      batch.map(async (url) => {
+        try {
+          const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+          if (!res.ok) return [];
+          const text = await res.text();
+          return extractUrlsFromSitemap(text, siteUrl);
+        } catch {
+          return [];
+        }
+      })
+    );
+    allUrls.push(...results.flat());
   }
+
   return allUrls.length > 0 ? allUrls : initial;
 }
 

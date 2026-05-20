@@ -22,8 +22,14 @@ const LIGHTHOUSE_TIMEOUT_MS = 90_000;
 const domainConcurrency = new Map<string, number>();
 const DOMAIN_RATE_LIMIT = parseInt(process.env.DOMAIN_RATE_LIMIT ?? "2", 10);
 
+const ACQUIRE_TIMEOUT_MS = 60_000;
+
 async function acquireDomainSlot(domain: string): Promise<void> {
+  const start = Date.now();
   while ((domainConcurrency.get(domain) ?? 0) >= DOMAIN_RATE_LIMIT) {
+    if (Date.now() - start > ACQUIRE_TIMEOUT_MS) {
+      throw new Error(`Excedido tempo limite aguardando slot de concorrência para o domínio: ${domain}`);
+    }
     await new Promise((r) => setTimeout(r, 500));
   }
   domainConcurrency.set(domain, (domainConcurrency.get(domain) ?? 0) + 1);
@@ -65,9 +71,9 @@ class BrowserPool {
     return new Promise((resolve) => this.waiters.push(resolve));
   }
 
-  async release(browser: Browser, opts: { crashed?: boolean } = {}): Promise<void> {
+  async release(browser: Browser, opts: { crashed?: boolean; isDirty?: boolean } = {}): Promise<void> {
     let next = browser;
-    if (opts.crashed || !browser.isConnected()) {
+    if (opts.crashed || opts.isDirty || !browser.isConnected()) {
       try { await browser.close(); } catch { /* already dead */ }
       next = await puppeteer.launch({ headless: true, args: CHROME_FLAGS });
     }
@@ -190,6 +196,7 @@ export function startAuditWorker(databaseUrl: string) {
       const browser = await pool.acquire();
 
       await acquireDomainSlot(domain);
+      let isDirty = false;
       try {
         await db.insert(logs).values({
           id: nanoid(),
@@ -214,6 +221,10 @@ export function startAuditWorker(databaseUrl: string) {
           .set({ doneUrls: sql`${jobs.doneUrls} + 1` })
           .where(eq(jobs.id, jobId));
       } catch (err) {
+        if (err instanceof Error && (err.message.includes("timed out") || err.message.includes("Protocol error"))) {
+          isDirty = true;
+        }
+
         const error = err instanceof Error ? err.message : String(err);
 
         if (isLastAttempt) {
@@ -252,7 +263,7 @@ export function startAuditWorker(databaseUrl: string) {
         throw err;
       } finally {
         releaseDomainSlot(domain);
-        await pool.release(browser, { crashed: !browser.isConnected() });
+        await pool.release(browser, { isDirty, crashed: !browser.isConnected() });
 
         if (isLastAttempt) {
           const [current] = await db.select().from(jobs).where(eq(jobs.id, jobId));
