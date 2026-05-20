@@ -564,6 +564,24 @@ ${LINK_GUIDANCE}`;
     },
   );
 
+  app.delete<{ Params: { id: string } }>(
+    "/jobs/:id",
+    async (req, reply) => {
+      const { id } = req.params;
+      
+      const [job] = await db.select().from(jobs).where(eq(jobs.id, id));
+      if (!job) return reply.status(404).send({ error: "Not found" });
+
+      // Delete logs manually
+      await db.delete(logs).where(eq(logs.jobId, id));
+
+      // Delete job (cascades to urlResults and aiReports)
+      await db.delete(jobs).where(eq(jobs.id, id));
+
+      return reply.send({ ok: true });
+    },
+  );
+
   app.post<{ Params: { id: string; resultId: string } }>(
     "/jobs/:id/results/:resultId/retry",
     async (req, reply) => {

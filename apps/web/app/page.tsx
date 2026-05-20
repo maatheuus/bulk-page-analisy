@@ -236,6 +236,60 @@ export default function HomePage() {
                           ↔ COMPARE
                         </Link>
                       )}
+                    {job.status === "cancelled" && (
+                      <button
+                        onClick={async (e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          try {
+                            const res = await fetchWithRetry(`${API}/jobs/${job.id}/resume`, { method: "POST" });
+                            if (res.ok) fetchJobs();
+                          } catch {}
+                        }}
+                        className="text-(--lime-dim) hover:text-(--lime) text-[0.65rem] tracking-widest transition-colors bg-transparent border border-(--border) hover:border-(--lime-dim) px-2 py-0.5 font-['Share_Tech_Mono'] cursor-pointer"
+                        title="Voltar de onde parou"
+                      >
+                        ↻ RESUME
+                      </button>
+                    )}
+                    {(job.status === "done" || job.status === "failed" || job.status === "cancelled") && (
+                      <button
+                        onClick={async (e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          try {
+                            const res = await fetchWithRetry(`${API}/jobs`, {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ siteUrl: job.siteUrl, formFactor: job.formFactor }),
+                            });
+                            if (res.ok) {
+                              const newJob = await res.json();
+                              router.push(`/jobs/${newJob.id}`);
+                            }
+                          } catch {}
+                        }}
+                        className="text-(--lime-dim) hover:text-(--lime) text-[0.65rem] tracking-widest transition-colors bg-transparent border border-(--border) hover:border-(--lime-dim) px-2 py-0.5 font-['Share_Tech_Mono'] cursor-pointer"
+                        title="Rodar novamente"
+                      >
+                        ⟲ RERUN
+                      </button>
+                    )}
+                    <button
+                      onClick={async (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (!confirm("Tem certeza que deseja apagar este scan?")) return;
+                        try {
+                          const res = await fetchWithRetry(`${API}/jobs/${job.id}`, { method: "DELETE" });
+                          if (res.ok) fetchJobs();
+                        } catch {}
+                      }}
+                      className="text-(--red) hover:text-red-500 text-[0.65rem] tracking-widest transition-colors bg-transparent border border-(--border) hover:border-red-500/50 px-2 py-0.5 font-['Share_Tech_Mono'] cursor-pointer"
+                      title="Apagar scan"
+                    >
+                      ✕ DELETE
+                    </button>
                   </div>
 
                   <span className="text-(--text-muted) text-[0.7rem]">→</span>
